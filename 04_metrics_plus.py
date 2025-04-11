@@ -731,34 +731,94 @@ if __name__ == '__main__':
     dataset_avg_metrics = {}
     
     # Usar transformação de Fisher se necessário
+# Substitua a seção da transformação de Fisher pelo seguinte código:
+
+# Usar transformação de Fisher se necessário
     if needs_fisher_transform:
         # Criar valores Z para cada dataset
         dataset_z_values = defaultdict(list)
-        
+        dataset_raw_values = defaultdict(list)  # Para backup se algo der errado
+    
+        # Registro diagnóstico
+        print("\nDiagnostic information for Fisher Z transformation:")
         for dataset, values in dataset_metrics.items():
+            print(f"Dataset '{dataset}': {len(values)} values, range: ", end="")
+            if values:
+                print(f"[{min(values):.4f}, {max(values):.4f}]")
+            else:
+                print("Empty")
+        
+            valid_count = 0
+            invalid_count = 0
+        
             for val in values:
+                # Armazenar valores brutos como backup
+                dataset_raw_values[dataset].append(val)
+            
+                # Verificar explicitamente por NaN ou valores extremos
+                if np.isnan(val) or val is None:
+                    invalid_count += 1
+                    continue
+                
+                # Limitar valores para evitar problemas na transformação
+                if val > 0.9999:
+                    val = 0.9999
+                    invalid_count += 1
+                elif val < -0.9999:
+                    val = -0.9999
+                    invalid_count += 1
+                else:
+                    valid_count += 1
+                
                 try:
                     z_value = fisher_z_transform(val)
-                    dataset_z_values[dataset].append(z_value)
-                except:
-                    pass
-                    
+                    if not np.isnan(z_value) and z_value is not None:
+                        dataset_z_values[dataset].append(z_value)
+                except Exception as e:
+                    invalid_count += 1
+                    print(f"  Error transforming value {val}: {str(e)}")
+        
+            print(f"  Valid values: {valid_count}, Invalid values: {invalid_count}")
+    
         # Calcular média dos valores Z e transformar de volta
+        print("\nCalculated average metrics:")
         for dataset in dataset_z_values:
             if dataset_z_values[dataset]:
+                # Se temos valores Z válidos, use o método recomendado
                 avg_z = np.mean(dataset_z_values[dataset])
-                dataset_avg_metrics[dataset] = fisher_z_inverse(avg_z)
+                transformed_value = fisher_z_inverse(avg_z)
+                print(f"  {dataset}: Z-avg={avg_z:.6f}, transformed={transformed_value:.6f}")
+                dataset_avg_metrics[dataset] = transformed_value
             else:
-                dataset_avg_metrics[dataset] = 0
-        
-        print("\nUsing Fisher Z transformation for averaging.")
+                # Se não temos valores Z válidos, use média direta como fallback
+                if dataset_raw_values[dataset]:
+                    # Filtrar valores NaN antes de calcular a média
+                    valid_values = [v for v in dataset_raw_values[dataset] 
+                                if not np.isnan(v) and v is not None]
+                    if valid_values:
+                        avg_raw = np.mean(valid_values)
+                        print(f"  {dataset}: No valid Z values, using direct average={avg_raw:.6f}")
+                        dataset_avg_metrics[dataset] = avg_raw
+                    else:
+                        print(f"  {dataset}: No valid values at all, setting to 0")
+                        dataset_avg_metrics[dataset] = 0.0
+                else:
+                    print(f"  {dataset}: No data, setting to 0")
+                    dataset_avg_metrics[dataset] = 0.0
+    
+        print("\nUsing Fisher Z transformation for averaging (with robust error handling).")
     else:
-        # Médias simples para outras métricas
+    # Médias simples para outras métricas (também com tratamento de NaN)
         for dataset in dataset_total_metrics:
             if dataset_count[dataset] > 0:
-                dataset_avg_metrics[dataset] = dataset_total_metrics[dataset] / dataset_count[dataset]
+                # Usar a média do dataset_metrics diretamente, filtando NaN
+                values = [v for v in dataset_metrics[dataset] if not np.isnan(v) and v is not None]
+                if values:
+                    dataset_avg_metrics[dataset] = np.mean(values)
+                else:
+                    dataset_avg_metrics[dataset] = 0.0
             else:
-                dataset_avg_metrics[dataset] = 0
+                dataset_avg_metrics[dataset] = 0.0
     
     # Encontrar o melhor dataset
     if higher_is_better:
