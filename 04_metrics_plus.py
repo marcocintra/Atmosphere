@@ -84,9 +84,7 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0):
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
 def calculate_ssim(y_true, y_pred):
-    """
-    Calcula o Structural Similarity Index (SSIM) entre duas imagens.
-    """
+    """Calcula o Structural Similarity Index (SSIM) entre duas imagens."""
     # Converte para escala de cinza se a imagem for colorida
     if len(y_true.shape) > 2 and y_true.shape[2] > 1:
         # Média dos canais para obter escala de cinza
@@ -137,6 +135,34 @@ def load_image(filepath):
         print(f"Formato de arquivo não suportado: {filepath}")
         return None
 
+# Função para verificar a correção das estatísticas combinadas
+def verify_combined_stats(selection):
+    """
+    Verifica se as estatísticas combinadas estão sendo calculadas corretamente.
+    """
+    inconsistencies = 0
+    
+    for idx, row in selection.iterrows():
+        max_a = row['max_a']
+        max_b = row['max_b']
+        max_both = row['max_both']
+        
+        correct_max = max(max_a, max_b)
+        
+        if abs(max_both - correct_max) > 1e-10:
+            inconsistencies += 1
+            print(f"INCONSISTÊNCIA DETECTADA no registro {idx}:")
+            print(f"  max_a = {max_a:.6f}, max_b = {max_b:.6f}")
+            print(f"  max_both armazenado = {max_both:.6f}")
+            print(f"  max_both correto = {correct_max:.6f}")
+            print(f"  Discrepância: {abs(max_both - correct_max):.10f}")
+    
+    if inconsistencies > 0:
+        print(f"\nTotal de inconsistências encontradas: {inconsistencies} de {len(selection)} registros")
+        print("Todos os valores max_both são calculados agora como max(max_a, max_b)")
+    else:
+        print("\nVerificação de estatísticas combinadas: Todos os valores corretos!")
+
 # Função para calcular estatísticas de forma garantidamente consistente
 def calculate_strict_stats(map_a, map_b):
     """
@@ -161,22 +187,47 @@ def calculate_strict_stats(map_a, map_b):
     else:
         map_b_flat = map_b
     
-    # Calcular estatísticas individuais
+    # Calcular estatísticas individuais - Dataset A
     min_a = float(np.min(map_a_flat))
     max_a = float(np.max(map_a_flat))
+    mean_a = float(np.mean(map_a_flat))
+    median_a = float(np.median(map_a_flat))
+    q1_a = float(np.percentile(map_a_flat, 25))
     q3_a = float(np.percentile(map_a_flat, 75))
     
+    # Calcular estatísticas individuais - Dataset B
     min_b = float(np.min(map_b_flat))
     max_b = float(np.max(map_b_flat))
+    mean_b = float(np.mean(map_b_flat))
+    median_b = float(np.median(map_b_flat))
+    q1_b = float(np.percentile(map_b_flat, 25))
     q3_b = float(np.percentile(map_b_flat, 75))
     
     # Calcular estatísticas combinadas GARANTIDAMENTE consistentes
     min_both = min(min_a, min_b)
     max_both = max(max_a, max_b)
     
-    # Criar array combinado para calcular Q3
+    # Criar array combinado apenas para estatísticas que realmente precisam do conjunto combinado
     both_flats = np.concatenate([map_a_flat, map_b_flat])
+    mean_both = float(np.mean(both_flats))
+    median_both = float(np.median(both_flats))
+    q1_both = float(np.percentile(both_flats, 25))
     q3_both = float(np.percentile(both_flats, 75))
+    
+    # Verificação explícita para garantir max_both = max(max_a, max_b)
+    max_both_calculated = max(max_a, max_b)
+    max_both_direct = float(np.max(both_flats))
+    
+    # Se houver discrepância, usar o valor garantidamente correto
+    if abs(max_both_calculated - max_both_direct) > 1e-10:
+        print(f"AVISO: Discrepância no cálculo do máximo combinado!")
+        print(f"  max_a = {max_a:.6f}, max_b = {max_b:.6f}")
+        print(f"  max(max_a, max_b) = {max_both_calculated:.6f}")
+        print(f"  np.max(both_flats) = {max_both_direct:.6f}")
+        print(f"  Usando o valor correto: max(max_a, max_b)")
+    
+    # Usar a definição matematicamente correta, independentemente do valor direto
+    max_both = max_both_calculated
     
     # Amplitude de dados
     data_range = max_both - min_both
@@ -184,12 +235,23 @@ def calculate_strict_stats(map_a, map_b):
     return {
         'min_a': min_a,
         'max_a': max_a,
+        'mean_a': mean_a,
+        'median_a': median_a,
+        'q1_a': q1_a,
         'q3_a': q3_a,
+        
         'min_b': min_b,
         'max_b': max_b,
+        'mean_b': mean_b,
+        'median_b': median_b,
+        'q1_b': q1_b,
         'q3_b': q3_b,
+        
         'min_both': min_both,
         'max_both': max_both,
+        'mean_both': mean_both,
+        'median_both': median_both,
+        'q1_both': q1_both,
         'q3_both': q3_both,
         'data_range': data_range
     }
@@ -212,7 +274,16 @@ if __name__ == '__main__':
                         help='Verify strict consistency of statistics')
     parser.add_argument('--top-n', type=int, default=10,
                         help='Number of top maps to display (default: 10)')
+    parser.add_argument('--check-existing', type=str, default=None,
+                        help='Check an existing results CSV file for max_both consistency')
     args = parser.parse_args()
+    
+    # Verificar arquivo existente se especificado
+    if args.check_existing:
+        print(f"Verificando consistência em arquivo existente: {args.check_existing}")
+        existing_df = pd.read_csv(args.check_existing)
+        verify_combined_stats(existing_df)
+        exit(0)
     
     metric_type = args.metric
     huber_delta = args.huber_delta
@@ -290,7 +361,7 @@ if __name__ == '__main__':
     print(f"Higher values are better: {'YES' if higher_is_better else 'NO'}")
     print(f"Using Fisher Z transform: {'YES' if needs_fisher_transform else 'NO'}")
     print(f"Using strict statistics calculation: {'YES' if verify_stats else 'NO'}")
-    print(f"Displaying top {top_n} maps for each comparison")
+    print(f"Displaying top {top_n} maps for each comparison with detailed statistics")
     
     # Verificar quais diretórios existem
     existing_dirs = []
@@ -413,15 +484,28 @@ if __name__ == '__main__':
                             'filename_b': file_b.name,
                             metric_type: ssim_value,
                             f'{metric_type}_p': ssim_value * 100,  # percentual para SSIM
-                            # Estatísticas estritamente consistentes
+                            # Estatísticas estritamente consistentes - Dataset A
                             'min_a': stats['min_a'],
                             'max_a': stats['max_a'],
+                            'mean_a': stats['mean_a'],
+                            'median_a': stats['median_a'],
+                            'q1_a': stats['q1_a'],
                             'q3_a': stats['q3_a'],
+                            
+                            # Estatísticas Dataset B
                             'min_b': stats['min_b'],
                             'max_b': stats['max_b'],
+                            'mean_b': stats['mean_b'],
+                            'median_b': stats['median_b'],
+                            'q1_b': stats['q1_b'],
                             'q3_b': stats['q3_b'],
+                            
+                            # Estatísticas Combinadas
                             'min_both': stats['min_both'],
                             'max_both': stats['max_both'],
+                            'mean_both': stats['mean_both'],
+                            'median_both': stats['median_both'],
+                            'q1_both': stats['q1_both'],
                             'q3_both': stats['q3_both'],
                             'data_range': stats['data_range']
                         }
@@ -535,22 +619,32 @@ if __name__ == '__main__':
                             'filename': file_a.name,
                             metric_type: metric_value,
                             f'{metric_type}_p': value_p,
-                            # Estatísticas estritamente consistentes
+                            
+                            # Estatísticas Dataset A
                             'min_a': stats['min_a'],
                             'max_a': stats['max_a'],
+                            'mean_a': stats['mean_a'],
+                            'median_a': stats['median_a'],
+                            'q1_a': stats['q1_a'],
                             'q3_a': stats['q3_a'],
+                            
+                            # Estatísticas Dataset B
                             'min_b': stats['min_b'],
                             'max_b': stats['max_b'],
+                            'mean_b': stats['mean_b'],
+                            'median_b': stats['median_b'],
+                            'q1_b': stats['q1_b'],
                             'q3_b': stats['q3_b'],
+                            
+                            # Estatísticas Combinadas
                             'min_both': stats['min_both'],
                             'max_both': stats['max_both'],
+                            'mean_both': stats['mean_both'],
+                            'median_both': stats['median_both'],
+                            'q1_both': stats['q1_both'],
                             'q3_both': stats['q3_both'],
                             'data_range': stats['data_range']
                         }
-                        
-                        # Para análises posteriores
-                        result_data['map_a'] = map_a_flat
-                        result_data['map_b'] = map_b_flat
                         
                         result.append(result_data)
                         
@@ -609,6 +703,12 @@ if __name__ == '__main__':
             print(f"{dataset_a} x {dataset_b}")
             print(f"Number of comparisons: {len(selection)}")
             
+            # ===============================================================
+            # Verificar a correção das estatísticas combinadas (AQUI DEVEMOS CHAMAR A FUNÇÃO)
+            # ===============================================================
+            print("\nVerificando a correção das estatísticas combinadas...")
+            verify_combined_stats(selection)
+            
             # Calcular métrica média para esta comparação
             metric_values = selection[metric_type].values
             metric_value = np.mean(metric_values)
@@ -625,23 +725,35 @@ if __name__ == '__main__':
             # Calcular estatísticas médias garantidamente consistentes
             mean_min_a = selection['min_a'].mean()
             mean_max_a = selection['max_a'].mean()
+            mean_mean_a = selection['mean_a'].mean()  # média das médias
+            mean_median_a = selection['median_a'].mean()  # média das medianas
+            mean_q1_a = selection['q1_a'].mean()
             mean_q3_a = selection['q3_a'].mean()
             
             mean_min_b = selection['min_b'].mean()
             mean_max_b = selection['max_b'].mean()
+            mean_mean_b = selection['mean_b'].mean()
+            mean_median_b = selection['median_b'].mean()
+            mean_q1_b = selection['q1_b'].mean()
             mean_q3_b = selection['q3_b'].mean()
             
-            # Garantir consistência nas médias combinadas
+            # CORREÇÃO: Garantir consistência nas médias combinadas
             mean_min_both = min(mean_min_a, mean_min_b)
-            mean_max_both = max(mean_max_a, mean_max_b)
+            mean_max_both = max(mean_max_a, mean_max_b)  # Forçar o valor correto para o máximo combinado
+            mean_mean_both = selection['mean_both'].mean()
+            mean_median_both = selection['median_both'].mean()
+            mean_q1_both = selection['q1_both'].mean()
             mean_q3_both = selection['q3_both'].mean()
-            mean_data_range = mean_max_both - mean_min_both
+            mean_data_range = mean_max_both - mean_min_both  # Recalcular o intervalo
             
             # Mostrar estatísticas agregadas
             print("\nStatistics for All Data:")
-            print(f"Dataset A - Min: {mean_min_a:.4f}, Max: {mean_max_a:.4f}, Q3: {mean_q3_a:.4f}")
-            print(f"Dataset B - Min: {mean_min_b:.4f}, Max: {mean_max_b:.4f}, Q3: {mean_q3_b:.4f}")
-            print(f"Combined  - Min: {mean_min_both:.4f}, Max: {mean_max_both:.4f}, Q3: {mean_q3_both:.4f}")
+            print("Dataset A:")
+            print(f"  Min: {mean_min_a:.4f}, Q1: {mean_q1_a:.4f}, Median: {mean_median_a:.4f}, Mean: {mean_mean_a:.4f}, Q3: {mean_q3_a:.4f}, Max: {mean_max_a:.4f}")
+            print("Dataset B:")
+            print(f"  Min: {mean_min_b:.4f}, Q1: {mean_q1_b:.4f}, Median: {mean_median_b:.4f}, Mean: {mean_mean_b:.4f}, Q3: {mean_q3_b:.4f}, Max: {mean_max_b:.4f}")
+            print("Combined:")
+            print(f"  Min: {mean_min_both:.4f}, Q1: {mean_q1_both:.4f}, Median: {mean_median_both:.4f}, Mean: {mean_mean_both:.4f}, Q3: {mean_q3_both:.4f}, Max: {mean_max_both:.4f}")
             print(f"Data Range: {mean_data_range:.4f}")
             
             # Exibir a métrica com formatação adequada
@@ -681,10 +793,15 @@ if __name__ == '__main__':
             comp_key = f"{dataset_a} x {dataset_b}"
             top_maps_by_comparison[comp_key] = sorted_maps
             
-            # Exibir lista dos melhores mapas
+            # Exibir lista dos melhores mapas com informações completas e estatísticas
             print(f"\nTop {top_n} Maps with Best {metric_type.upper()} Values:")
-            print("-" * 80)
+            print("-" * 120)
+            
             for idx, row in enumerate(sorted_maps.itertuples(), 1):
+                # Obter informações detalhadas dos datasets
+                dataset_a_name = row.dataset_a
+                dataset_b_name = row.dataset_b
+                
                 # Obter o nome do arquivo correto dependendo do tipo de métrica
                 if metric_type == 'ssim':
                     file_a = row.filename_a
@@ -706,10 +823,41 @@ if __name__ == '__main__':
                         date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M')
                     except:
                         date_str = str(row.datetime)
-                    print(f"{idx}. {date_str} - {file_info}: {metric_display}")
+                    
+                    # Exibir informações básicas
+                    print(f"{idx}. Data: {date_str}")
+                    print(f"   Comparação: {dataset_a_name} x {dataset_b_name}")
+                    print(f"   Arquivos: {file_info}")
+                    print(f"   {metric_type.upper()}: {metric_display}")
+                    
+                    # Adicionar estatísticas de cada mapa e do par combinado
+                    print(f"   Estatísticas do Dataset A:")
+                    print(f"     Min: {row.min_a:.4f}, Q1: {row.q1_a:.4f}, Median: {row.median_a:.4f}, Mean: {row.mean_a:.4f}, Q3: {row.q3_a:.4f}, Max: {row.max_a:.4f}")
+                    print(f"   Estatísticas do Dataset B:")
+                    print(f"     Min: {row.min_b:.4f}, Q1: {row.q1_b:.4f}, Median: {row.median_b:.4f}, Mean: {row.mean_b:.4f}, Q3: {row.q3_b:.4f}, Max: {row.max_b:.4f}")
+                    print(f"   Estatísticas Combinadas:")
+                    print(f"     Min: {row.min_both:.4f}, Q1: {row.q1_both:.4f}, Median: {row.median_both:.4f}, Mean: {row.mean_both:.4f}, Q3: {row.q3_both:.4f}, Max: {row.max_both:.4f}")
+                    print(f"     Data Range: {row.data_range:.4f}")
+                
                 else:
-                    print(f"{idx}. {file_info}: {metric_display}")
-            print("-" * 80)
+                    # Versão sem datetime mas com todas as estatísticas
+                    print(f"{idx}. Comparação: {dataset_a_name} x {dataset_b_name}")
+                    print(f"   Arquivos: {file_info}")
+                    print(f"   {metric_type.upper()}: {metric_display}")
+                    
+                    # Adicionar estatísticas de cada mapa e do par combinado
+                    print(f"   Estatísticas do Dataset A:")
+                    print(f"     Min: {row.min_a:.4f}, Q1: {row.q1_a:.4f}, Median: {row.median_a:.4f}, Mean: {row.mean_a:.4f}, Q3: {row.q3_a:.4f}, Max: {row.max_a:.4f}")
+                    print(f"   Estatísticas do Dataset B:")
+                    print(f"     Min: {row.min_b:.4f}, Q1: {row.q1_b:.4f}, Median: {row.median_b:.4f}, Mean: {row.mean_b:.4f}, Q3: {row.q3_b:.4f}, Max: {row.max_b:.4f}")
+                    print(f"   Estatísticas Combinadas:")
+                    print(f"     Min: {row.min_both:.4f}, Q1: {row.q1_both:.4f}, Median: {row.median_both:.4f}, Mean: {row.mean_both:.4f}, Q3: {row.q3_both:.4f}, Max: {row.max_both:.4f}")
+                    print(f"     Data Range: {row.data_range:.4f}")
+                
+                if idx < len(sorted_maps):
+                    print("-" * 80)  # Separador entre entradas
+            
+            print("-" * 120)
             
             # Análise mensal para dados com datetime
             if 'datetime' in selection.columns:
@@ -731,14 +879,11 @@ if __name__ == '__main__':
     dataset_avg_metrics = {}
     
     # Usar transformação de Fisher se necessário
-# Substitua a seção da transformação de Fisher pelo seguinte código:
-
-# Usar transformação de Fisher se necessário
     if needs_fisher_transform:
         # Criar valores Z para cada dataset
         dataset_z_values = defaultdict(list)
         dataset_raw_values = defaultdict(list)  # Para backup se algo der errado
-    
+        
         # Registro diagnóstico
         print("\nDiagnostic information for Fisher Z transformation:")
         for dataset, values in dataset_metrics.items():
@@ -747,19 +892,19 @@ if __name__ == '__main__':
                 print(f"[{min(values):.4f}, {max(values):.4f}]")
             else:
                 print("Empty")
-        
+            
             valid_count = 0
             invalid_count = 0
-        
+            
             for val in values:
                 # Armazenar valores brutos como backup
                 dataset_raw_values[dataset].append(val)
-            
+                
                 # Verificar explicitamente por NaN ou valores extremos
                 if np.isnan(val) or val is None:
                     invalid_count += 1
                     continue
-                
+                    
                 # Limitar valores para evitar problemas na transformação
                 if val > 0.9999:
                     val = 0.9999
@@ -769,7 +914,7 @@ if __name__ == '__main__':
                     invalid_count += 1
                 else:
                     valid_count += 1
-                
+                    
                 try:
                     z_value = fisher_z_transform(val)
                     if not np.isnan(z_value) and z_value is not None:
@@ -777,9 +922,9 @@ if __name__ == '__main__':
                 except Exception as e:
                     invalid_count += 1
                     print(f"  Error transforming value {val}: {str(e)}")
-        
+            
             print(f"  Valid values: {valid_count}, Invalid values: {invalid_count}")
-    
+        
         # Calcular média dos valores Z e transformar de volta
         print("\nCalculated average metrics:")
         for dataset in dataset_z_values:
@@ -794,7 +939,7 @@ if __name__ == '__main__':
                 if dataset_raw_values[dataset]:
                     # Filtrar valores NaN antes de calcular a média
                     valid_values = [v for v in dataset_raw_values[dataset] 
-                                if not np.isnan(v) and v is not None]
+                                   if not np.isnan(v) and v is not None]
                     if valid_values:
                         avg_raw = np.mean(valid_values)
                         print(f"  {dataset}: No valid Z values, using direct average={avg_raw:.6f}")
@@ -805,10 +950,10 @@ if __name__ == '__main__':
                 else:
                     print(f"  {dataset}: No data, setting to 0")
                     dataset_avg_metrics[dataset] = 0.0
-    
+        
         print("\nUsing Fisher Z transformation for averaging (with robust error handling).")
     else:
-    # Médias simples para outras métricas (também com tratamento de NaN)
+        # Médias simples para outras métricas (também com tratamento de NaN)
         for dataset in dataset_total_metrics:
             if dataset_count[dataset] > 0:
                 # Usar a média do dataset_metrics diretamente, filtando NaN
@@ -887,14 +1032,13 @@ if __name__ == '__main__':
         top_overall = df.sort_values(by=metric_type, ascending=False).head(top_n)
     else:
         top_overall = df.sort_values(by=metric_type, ascending=True).head(top_n)
-
-    print("-" * 100)
-
+    
+    print("-" * 120)
     for idx, row in enumerate(top_overall.itertuples(), 1):
         # Obter informações detalhadas dos datasets
         dataset_a = row.dataset_a
         dataset_b = row.dataset_b
-    
+        
         # Obter informações do arquivo corretas
         if metric_type == 'ssim':
             file_a = row.filename_a
@@ -902,13 +1046,13 @@ if __name__ == '__main__':
             file_info = f"{file_a} & {file_b}"
         else:
             file_info = getattr(row, 'filename', 'Unknown')
-    
+        
         # Formatar o valor da métrica adequadamente
         if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
             metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
         else:
             metric_display = f"{getattr(row, metric_type):.4f}"
-    
+        
         # Verificar se há uma coluna datetime
         if hasattr(row, 'datetime'):
             # Converter para string com formato legível
@@ -916,22 +1060,42 @@ if __name__ == '__main__':
                 date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M')
             except:
                 date_str = str(row.datetime)
-        
-            # Mostrar informações completas
+            
+            # Mostrar informações básicas
             print(f"{idx}. Data: {date_str}")
             print(f"   Comparação: {dataset_a} x {dataset_b}")
             print(f"   Arquivos: {file_info}")
             print(f"   {metric_type.upper()}: {metric_display}")
+            
+            # Adicionar estatísticas de cada mapa e do par combinado
+            print(f"   Estatísticas do Dataset A:")
+            print(f"     Min: {row.min_a:.4f}, Q1: {row.q1_a:.4f}, Median: {row.median_a:.4f}, Mean: {row.mean_a:.4f}, Q3: {row.q3_a:.4f}, Max: {row.max_a:.4f}")
+            print(f"   Estatísticas do Dataset B:")
+            print(f"     Min: {row.min_b:.4f}, Q1: {row.q1_b:.4f}, Median: {row.median_b:.4f}, Mean: {row.mean_b:.4f}, Q3: {row.q3_b:.4f}, Max: {row.max_b:.4f}")
+            print(f"   Estatísticas Combinadas:")
+            print(f"     Min: {row.min_both:.4f}, Q1: {row.q1_both:.4f}, Median: {row.median_both:.4f}, Mean: {row.mean_both:.4f}, Q3: {row.q3_both:.4f}, Max: {row.max_both:.4f}")
+            print(f"     Data Range: {row.data_range:.4f}")
+            
             if idx < len(top_overall):
-                print("-" * 50)  # Separador entre entradas
+                print("-" * 80)  # Separador entre entradas
         else:
             # Versão sem datetime
             print(f"{idx}. Comparação: {dataset_a} x {dataset_b}")
             print(f"   Arquivos: {file_info}")
             print(f"   {metric_type.upper()}: {metric_display}")
+            
+                        # Adicionar estatísticas de cada mapa e do par combinado
+            print(f"   Estatísticas do Dataset A:")
+            print(f"     Min: {row.min_a:.4f}, Q1: {row.q1_a:.4f}, Median: {row.median_a:.4f}, Mean: {row.mean_a:.4f}, Q3: {row.q3_a:.4f}, Max: {row.max_a:.4f}")
+            print(f"   Estatísticas do Dataset B:")
+            print(f"     Min: {row.min_b:.4f}, Q1: {row.q1_b:.4f}, Median: {row.median_b:.4f}, Mean: {row.mean_b:.4f}, Q3: {row.q3_b:.4f}, Max: {row.max_b:.4f}")
+            print(f"   Estatísticas Combinadas:")
+            print(f"     Min: {row.min_both:.4f}, Q1: {row.q1_both:.4f}, Median: {row.median_both:.4f}, Mean: {row.mean_both:.4f}, Q3: {row.q3_both:.4f}, Max: {row.max_both:.4f}")
+            print(f"     Data Range: {row.data_range:.4f}")
+            
             if idx < len(top_overall):
-                print("-" * 50)  # Separador entre entradas
-            print("-" * 100)
+                print("-" * 80)  # Separador entre entradas
+    print("-" * 120)
     
     # Salvar métricas gerais em um arquivo separado
     overall_metrics = pd.DataFrame({
