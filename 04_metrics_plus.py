@@ -827,9 +827,14 @@ if __name__ == '__main__':
         top_overall = df.sort_values(by=metric_type, ascending=False).head(top_n)
     else:
         top_overall = df.sort_values(by=metric_type, ascending=True).head(top_n)
-    
-    print("-" * 80)
+
+    print("-" * 100)
+
     for idx, row in enumerate(top_overall.itertuples(), 1):
+        # Obter informações detalhadas dos datasets
+        dataset_a = row.dataset_a
+        dataset_b = row.dataset_b
+    
         # Obter informações do arquivo corretas
         if metric_type == 'ssim':
             file_a = row.filename_a
@@ -837,16 +842,13 @@ if __name__ == '__main__':
             file_info = f"{file_a} & {file_b}"
         else:
             file_info = getattr(row, 'filename', 'Unknown')
-        
-        # Informações da comparação
-        comparison_info = f"{row.source_a} x {row.source_b}"
-        
+    
         # Formatar o valor da métrica adequadamente
         if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
             metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
         else:
-            metric_display = f"{getattr(row, metric_type):.4f}"
-        
+        metric_display = f"{getattr(row, metric_type):.4f}"
+    
         # Verificar se há uma coluna datetime
         if hasattr(row, 'datetime'):
             # Converter para string com formato legível
@@ -854,10 +856,22 @@ if __name__ == '__main__':
                 date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M')
             except:
                 date_str = str(row.datetime)
-            print(f"{idx}. {comparison_info} - {date_str} - {file_info}: {metric_display}")
+        
+            # Mostrar informações completas
+            print(f"{idx}. Data: {date_str}")
+            print(f"   Comparação: {dataset_a} x {dataset_b}")
+            print(f"   Arquivos: {file_info}")
+            print(f"   {metric_type.upper()}: {metric_display}")
+            if idx < len(top_overall):
+                print("-" * 50)  # Separador entre entradas
         else:
-            print(f"{idx}. {comparison_info} - {file_info}: {metric_display}")
-    print("-" * 80)
+            # Versão sem datetime
+            print(f"{idx}. Comparação: {dataset_a} x {dataset_b}")
+            print(f"   Arquivos: {file_info}")
+            print(f"   {metric_type.upper()}: {metric_display}")
+            if idx < len(top_overall):
+                print("-" * 50)  # Separador entre entradas
+            print("-" * 100)
     
     # Salvar métricas gerais em um arquivo separado
     overall_metrics = pd.DataFrame({
