@@ -150,14 +150,11 @@ from skimage.metrics import structural_similarity as ssim
 from skimage.io import imread
 import warnings
 
-# Suprimir avisos para melhor legibilidade
 warnings.filterwarnings('ignore')
 
-# Função para calcular o RMSE
 def calculate_rmse(y_true, y_pred):
     return np.sqrt(np.mean((y_true - y_pred) ** 2))
 
-# Função para calcular o RMSE como porcentagem da amplitude
 def calculate_rmse_percent(y_true, y_pred):
     rmse = calculate_rmse(y_true, y_pred)
     # Combinamos ambos os arrays para encontrar a amplitude total
@@ -182,7 +179,6 @@ def fisher_z_inverse(z):
     """Transforma z de volta para correlação r"""
     return (np.exp(2 * z) - 1) / (np.exp(2 * z) + 1)
 
-# Funções para as métricas
 def calculate_residual_error(y_true, y_pred):
     """Calcula o erro residual médio"""
     return np.mean(y_true - y_pred)
@@ -279,7 +275,6 @@ def load_image(filepath):
         print(f"Formato de arquivo não suportado: {filepath}")
         return None
 
-# Função para calcular estatísticas de forma garantidamente consistente
 def calculate_strict_stats(map_a, map_b):
     """
     Calcula rigorosamente estatísticas para dois arrays, garantindo que as estatísticas
@@ -312,7 +307,6 @@ def calculate_strict_stats(map_a, map_b):
     max_b = float(np.max(map_b_flat))
     q3_b = float(np.percentile(map_b_flat, 75))
     
-    # Calcular estatísticas combinadas GARANTIDAMENTE consistentes
     min_both = min(min_a, min_b)
     max_both = max(max_a, max_b)
     
@@ -721,7 +715,6 @@ if __name__ == '__main__':
     if 'datetime' in df.columns:
         df.sort_values('datetime', inplace=True)
 
-    # Dictionary to store aggregate metrics for each dataset
     dataset_metrics = defaultdict(list)
     dataset_total_metrics = defaultdict(float)
     dataset_count = defaultdict(int)
@@ -757,7 +750,6 @@ if __name__ == '__main__':
             dataset_count[comparison[0]] += len(metric_values)
             dataset_count[comparison[1]] += len(metric_values)
             
-            # Calcular estatísticas médias garantidamente consistentes
             mean_min_a = selection['min_a'].mean()
             mean_max_a = selection['max_a'].mean()
             mean_q3_a = selection['q3_a'].mean()
