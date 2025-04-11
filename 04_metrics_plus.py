@@ -847,7 +847,7 @@ if __name__ == '__main__':
         if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
             metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
         else:
-        metric_display = f"{getattr(row, metric_type):.4f}"
+            metric_display = f"{getattr(row, metric_type):.4f}"
     
         # Verificar se há uma coluna datetime
         if hasattr(row, 'datetime'):
