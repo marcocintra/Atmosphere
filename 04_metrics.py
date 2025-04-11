@@ -146,6 +146,12 @@ import argparse
 from pathlib import Path
 from collections import defaultdict
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+from skimage.metrics import structural_similarity as ssim
+from skimage.io import imread
+import warnings
+
+# Suprimir avisos para melhor legibilidade
+warnings.filterwarnings('ignore')
 
 # Função para calcular o RMSE
 def calculate_rmse(y_true, y_pred):
@@ -176,7 +182,7 @@ def fisher_z_inverse(z):
     """Transforma z de volta para correlação r"""
     return (np.exp(2 * z) - 1) / (np.exp(2 * z) + 1)
 
-# Funções para as novas métricas
+# Funções para as métricas
 def calculate_residual_error(y_true, y_pred):
     """Calcula o erro residual médio"""
     return np.mean(y_true - y_pred)
@@ -219,51 +225,156 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0):
     linear = abs_errors - quadratic
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
+def calculate_ssim(y_true, y_pred):
+    """
+    Calcula o Structural Similarity Index (SSIM) entre duas imagens.
+    """
+    # Converte para escala de cinza se a imagem for colorida
+    if len(y_true.shape) > 2 and y_true.shape[2] > 1:
+        # Média dos canais para obter escala de cinza
+        y_true = np.mean(y_true, axis=2)
+    
+    if len(y_pred.shape) > 2 and y_pred.shape[2] > 1:
+        y_pred = np.mean(y_pred, axis=2)
+        
+    # Normaliza os dados para o intervalo [0, 1] para melhor funcionamento do SSIM
+    data_range = max(np.max(y_true) - np.min(y_true), np.max(y_pred) - np.min(y_pred))
+    if data_range == 0:
+        data_range = 1  # Evita divisão por zero
+        
+    try:
+        return ssim(y_true, y_pred, data_range=data_range)
+    except Exception as e:
+        print(f"Erro ao calcular SSIM: {str(e)}")
+        print(f"Shapes: y_true={y_true.shape}, y_pred={y_pred.shape}")
+        # Tenta redimensionar se os tamanhos forem diferentes
+        if y_true.shape != y_pred.shape:
+            print("Tentando redimensionar imagens para o mesmo tamanho...")
+            min_height = min(y_true.shape[0], y_pred.shape[0])
+            min_width = min(y_true.shape[1], y_pred.shape[1])
+            y_true_resized = y_true[:min_height, :min_width]
+            y_pred_resized = y_pred[:min_height, :min_width]
+            return ssim(y_true_resized, y_pred_resized, data_range=data_range)
+        return 0
+
+def load_image(filepath):
+    """Carrega uma imagem e a converte para array numpy."""
+    if filepath.suffix.lower() in ['.png', '.jpg', '.jpeg', '.tif', '.tiff']:
+        try:
+            img = imread(filepath)
+            # Se a imagem é colorida (RGB), converte para escala de cinza
+            if len(img.shape) > 2 and img.shape[2] > 1:
+                img = np.mean(img, axis=2)
+            return img
+        except Exception as e:
+            print(f"Erro ao carregar imagem {filepath}: {str(e)}")
+            return None
+    elif filepath.suffix.lower() == '.npy':
+        try:
+            return np.load(filepath)
+        except Exception as e:
+            print(f"Erro ao carregar arquivo npy {filepath}: {str(e)}")
+            return None
+    else:
+        print(f"Formato de arquivo não suportado: {filepath}")
+        return None
+
+# Função para calcular estatísticas de forma garantidamente consistente
+def calculate_strict_stats(map_a, map_b):
+    """
+    Calcula rigorosamente estatísticas para dois arrays, garantindo que as estatísticas
+    combinadas sejam matematicamente consistentes.
+    
+    Args:
+        map_a: Primeiro array de dados
+        map_b: Segundo array de dados
+        
+    Returns:
+        Dict com todas as estatísticas
+    """
+    # Aplainar arrays se necessário
+    if len(map_a.shape) > 1:
+        map_a_flat = map_a.flatten()
+    else:
+        map_a_flat = map_a
+        
+    if len(map_b.shape) > 1:
+        map_b_flat = map_b.flatten()
+    else:
+        map_b_flat = map_b
+    
+    # Calcular estatísticas individuais
+    min_a = float(np.min(map_a_flat))
+    max_a = float(np.max(map_a_flat))
+    q3_a = float(np.percentile(map_a_flat, 75))
+    
+    min_b = float(np.min(map_b_flat))
+    max_b = float(np.max(map_b_flat))
+    q3_b = float(np.percentile(map_b_flat, 75))
+    
+    # Calcular estatísticas combinadas GARANTIDAMENTE consistentes
+    min_both = min(min_a, min_b)
+    max_both = max(max_a, max_b)
+    
+    # Criar array combinado para calcular Q3
+    both_flats = np.concatenate([map_a_flat, map_b_flat])
+    q3_both = float(np.percentile(both_flats, 75))
+    
+    # Amplitude de dados
+    data_range = max_both - min_both
+    
+    return {
+        'min_a': min_a,
+        'max_a': max_a,
+        'q3_a': q3_a,
+        'min_b': min_b,
+        'max_b': max_b,
+        'q3_b': q3_b,
+        'min_both': min_both,
+        'max_both': max_both,
+        'q3_both': q3_both,
+        'data_range': data_range
+    }
+
 if __name__ == '__main__':
     # Configuração do parser de argumentos
     parser = argparse.ArgumentParser(description='Calculate metrics between datasets')
     parser.add_argument('--metric', type=str, 
                         choices=['pearson', 'rmse', 'residual', 'max_residual', 'min_residual', 
-                                'r2', 'mse', 'mae', 'cosine', 'huber'], 
+                                'r2', 'mse', 'mae', 'cosine', 'huber', 'ssim'], 
                         default='pearson',
-                        help='Metric to calculate: pearson, rmse, residual, max_residual, min_residual, r2, mse, mae, cosine, or huber')
+                        help='Metric to calculate: pearson, rmse, residual, max_residual, min_residual, r2, mse, mae, cosine, huber, or ssim')
     parser.add_argument('--huber-delta', type=float, default=1.0,
                         help='Delta parameter for Huber loss (default: 1.0)')
     parser.add_argument('--min-residual-percentile', type=float, default=5.0,
                         help='Percentile for min_residual calculation (default: 5.0)')
+    parser.add_argument('--dataset-suffix', type=str, default=None,
+                        help='Override the dataset suffix (default: determined by metric)')
+    parser.add_argument('--verify-stats', action='store_true',
+                        help='Verify strict consistency of statistics')
     args = parser.parse_args()
     
     metric_type = args.metric
     huber_delta = args.huber_delta
     min_residual_percentile = args.min_residual_percentile
+    verify_stats = args.verify_stats
     
-    # Atualizar a função min_residual para usar o percentil especificado
-    if metric_type == 'min_residual':
-        def custom_min_residual(y_true, y_pred):
-            return np.percentile(np.abs(y_true - y_pred), min_residual_percentile)
-        calculate_min_residual_error = custom_min_residual
-    
-    # Dicionário de funções para calcular métricas
-    metric_functions = {
-        'pearson': lambda y_true, y_pred: np.corrcoef(y_true, y_pred)[0, 1],
-        'rmse': calculate_rmse,
-        'residual': calculate_residual_error,
-        'max_residual': calculate_max_residual_error,
-        'min_residual': calculate_min_residual_error,
-        'r2': calculate_r2_score,
-        'mse': calculate_mse,
-        'mae': calculate_mae,
-        'cosine': calculate_cosine_similarity,
-        'huber': lambda y_true, y_pred: calculate_huber_loss(y_true, y_pred, huber_delta)
-    }
+    # Determinar o tipo de dataset correto baseado na métrica
+    if args.dataset_suffix:
+        # Se especificado manualmente, use esse
+        dataset_suffix = args.dataset_suffix
+    else:
+        # Por padrão, use 'interp' para todas as métricas exceto SSIM
+        dataset_suffix = 'interp_raster' if metric_type == 'ssim' else 'interp'
     
     # Determinar se a métrica é do tipo "quanto maior, melhor" ou "quanto menor, melhor"
-    higher_is_better = metric_type in ['pearson', 'r2', 'cosine']
+    higher_is_better = metric_type in ['pearson', 'r2', 'cosine', 'ssim']
     
     # Determinar se a métrica precisa de transformação Fisher para média
     needs_fisher_transform = metric_type in ['pearson', 'r2']
     
-    datasets = {
+    # Lista base de datasets
+    base_datasets = {
         'embrace': [
             'mapas1_embrace_2022_2024_0800',
             'mapas1_embrace_2022_2024_1600',
@@ -294,6 +405,11 @@ if __name__ == '__main__':
             'mapas2_nagoya_2022_2024_2000_2200_0000_0200_0400'
         ]
     }
+    
+    # Adicionar sufixo aos nomes dos datasets
+    datasets = {}
+    for source, dataset_list in base_datasets.items():
+        datasets[source] = [f"{dataset}_{dataset_suffix}" for dataset in dataset_list]
 
     comparisons = [
         ['embrace', 'igs'],
@@ -305,360 +421,519 @@ if __name__ == '__main__':
     ]
 
     base_dir = Path('.').resolve() / 'output'
-    dataset_type = 'interp'
+    if not base_dir.exists():
+        base_dir = Path('.').resolve()  # Tenta o diretório atual se 'output' não existir
 
     print(f"Calculating {metric_type.upper()} metrics with additional statistics...")
+    print(f"Using dataset suffix: '{dataset_suffix}' based on metric type: {metric_type}")
+    print(f"Higher values are better: {'YES' if higher_is_better else 'NO'}")
+    print(f"Using Fisher Z transform: {'YES' if needs_fisher_transform else 'NO'}")
+    print(f"Using strict statistics calculation: {'YES' if verify_stats else 'NO'}")
     
-    if metric_type == 'min_residual':
-        print(f"Using {min_residual_percentile}th percentile for minimum residual calculation")
+    # Verificar quais diretórios existem
+    existing_dirs = []
+    for path in base_dir.glob('*'):
+        if path.is_dir() and dataset_suffix in path.name:
+            existing_dirs.append(path)
+    
+    if not existing_dirs:
+        print(f"WARNING: No directories found with suffix '{dataset_suffix}' in {base_dir}")
+        print("Available directories:")
+        for path in base_dir.glob('*'):
+            if path.is_dir():
+                print(f"  - {path.name}")
+    else:
+        print(f"Found {len(existing_dirs)} directories with the expected suffix.")
+        for path in existing_dirs[:5]:  # Mostra apenas os primeiros 5 para não sobrecarregar a saída
+            print(f"  - {path.name}")
+        if len(existing_dirs) > 5:
+            print(f"  ... and {len(existing_dirs) - 5} more.")
 
+    # Contador para arquivos processados
+    processed_files = 0
     result = []
+
     for comparison in comparisons:
-        for i, dataset_a in enumerate(datasets[comparison[0]]):
+        for i in range(min(len(datasets[comparison[0]]), len(datasets[comparison[1]]))):
+            dataset_a = datasets[comparison[0]][i]
             dataset_b = datasets[comparison[1]][i]
-            print(dataset_a, 'x', dataset_b)
+            
+            print(f"\nProcessing {dataset_a} x {dataset_b}")
+            
+            # Verifique se os diretórios existem
+            dir_a = base_dir / dataset_a
+            dir_b = base_dir / dataset_b
+            
+            if not dir_a.exists():
+                print(f"WARNING: Directory not found: {dir_a}")
+                continue
+            
+            if not dir_b.exists():
+                print(f"WARNING: Directory not found: {dir_b}")
+                continue
 
-            for file_a in sorted((base_dir / f'{dataset_a}_{dataset_type}').glob('*.npy')):
-                epoch = np.datetime64(file_a.name[:-4].replace('.', ':'))
-                file_b = base_dir / f'{dataset_b}_{dataset_type}' / file_a.name
-
-                if not file_b.exists():
+            # Processamento específico para SSIM (arquivos de imagem)
+            if metric_type == 'ssim':
+                # Lista de arquivos de imagens no diretório A
+                files_a = []
+                for ext in ['.png', '.jpg', '.jpeg', '.tif', '.tiff']:
+                    files_a.extend(list(dir_a.glob(f'*{ext}')))
+                
+                files_a = sorted(files_a)
+                
+                if not files_a:
+                    print(f"WARNING: No image files found in {dir_a}")
                     continue
-
-                map_a = np.load(file_a).flatten()
-                map_a = np.nan_to_num(map_a)
-
-                map_b = np.load(file_b).flatten()
-                map_b = np.nan_to_num(map_b)
-
-                # Calculate statistics
-                min_a = np.min(map_a)
-                max_a = np.max(map_a)
-                q3_a = np.percentile(map_a, 75)
+                    
+                print(f"Found {len(files_a)} image files in {dataset_a}")
                 
-                min_b = np.min(map_b)
-                max_b = np.max(map_b)
-                q3_b = np.percentile(map_b, 75)
+                # Para cada arquivo no dataset A, encontre o arquivo correspondente no dataset B
+                for file_a in files_a:
+                    # Extrair o timestamp do nome do arquivo
+                    try:
+                        # Tenta extrair a parte da data/hora do nome do arquivo
+                        # Assumindo formato como "2022-03-01T08.00.00_raster.png"
+                        timestamp = file_a.stem.split('_')[0]
+                        
+                        # Procura um arquivo no dataset B com o mesmo timestamp
+                        matching_files_b = list(dir_b.glob(f"{timestamp}*"))
+                        
+                        if not matching_files_b:
+                            continue
+                            
+                        file_b = matching_files_b[0]
+                        
+                        # Carregar as imagens
+                        img_a = load_image(file_a)
+                        img_b = load_image(file_b)
+                        
+                        if img_a is None or img_b is None:
+                            continue
+                        
+                        processed_files += 1
+                        
+                        # Calcular SSIM
+                        ssim_value = calculate_ssim(img_a, img_b)
+                        
+                        # Calcular estatísticas de forma estritamente consistente
+                        stats = calculate_strict_stats(img_a, img_b)
+                        
+                        # Verificar consistência se solicitado
+                        if verify_stats:
+                            # Calcular mínimo e máximo combinados de forma tradicional
+                            both_imgs = np.concatenate([img_a.flatten(), img_b.flatten()])
+                            trad_min = np.min(both_imgs)
+                            trad_max = np.max(both_imgs)
+                            
+                            # Verificar consistência
+                            if abs(stats['min_both'] - trad_min) > 1e-10 or abs(stats['max_both'] - trad_max) > 1e-10:
+                                print(f"INCONSISTENCY DETECTED in file {file_a.name}:")
+                                print(f"  Min A: {stats['min_a']:.6f}, Min B: {stats['min_b']:.6f}")
+                                print(f"  Strict Min Both: {stats['min_both']:.6f}, Traditional Min Both: {trad_min:.6f}")
+                                print(f"  Max A: {stats['max_a']:.6f}, Max B: {stats['max_b']:.6f}")
+                                print(f"  Strict Max Both: {stats['max_both']:.6f}, Traditional Max Both: {trad_max:.6f}")
+                        
+                        # Criar dados de resultado
+                        try:
+                            epoch = np.datetime64(timestamp.replace('T', ' ').replace('.', ':'))
+                        except:
+                            epoch = np.datetime64('1970-01-01T00:00:00')
+                            print(f"Warning: Could not parse datetime from filename {file_a.name}")
+                        
+                        result_data = {
+                            'datetime': epoch,
+                            'comparison': f'{comparison[0]} x {comparison[1]}',
+                            'dataset_a': dataset_a,
+                            'dataset_b': dataset_b,
+                            'source_a': comparison[0],
+                            'source_b': comparison[1],
+                            'filename_a': file_a.name,
+                            'filename_b': file_b.name,
+                            metric_type: ssim_value,
+                            f'{metric_type}_p': ssim_value * 100,  # percentual para SSIM
+                            # Estatísticas estritamente consistentes
+                            'min_a': stats['min_a'],
+                            'max_a': stats['max_a'],
+                            'q3_a': stats['q3_a'],
+                            'min_b': stats['min_b'],
+                            'max_b': stats['max_b'],
+                            'q3_b': stats['q3_b'],
+                            'min_both': stats['min_both'],
+                            'max_both': stats['max_both'],
+                            'q3_both': stats['q3_both'],
+                            'data_range': stats['data_range']
+                        }
+                        
+                        result.append(result_data)
+                        
+                        # Mostrar progresso a cada 10 arquivos
+                        if processed_files % 10 == 0:
+                            print(f"Processed {processed_files} file pairs...")
+                    
+                    except Exception as e:
+                        print(f"Error processing files {file_a}: {str(e)}")
+            
+            # Processamento para outras métricas (arquivos .npy)
+            else:
+                # Lista de arquivos binários .npy no diretório A
+                files_a = sorted(list(dir_a.glob('*.npy')))
                 
-                both_maps = np.concatenate([map_a, map_b])
-                min_both = np.min(both_maps)
-                max_both = np.max(both_maps)
-                q3_both = np.percentile(both_maps, 75)
-                data_range = max_both - min_both
-
-                # Calculate the selected metric
-                metric_function = metric_functions[metric_type]
-                value = metric_function(map_a, map_b)
+                if not files_a:
+                    print(f"WARNING: No .npy files found in {dir_a}")
+                    continue
+                    
+                print(f"Found {len(files_a)} .npy files in {dataset_a}")
                 
-                # Calculate percentage representation for interpretable metrics
-                if metric_type == 'pearson':
-                    value_p = value * 100  # percentage for correlation
-                elif metric_type == 'rmse':
-                    # RMSE as percentage of range
-                    value_p = (value / data_range) * 100 if data_range != 0 else 0
-                elif metric_type == 'r2':
-                    value_p = value * 100  # percentage for R²
-                elif metric_type == 'cosine':
-                    value_p = value * 100  # percentage for cosine similarity
-                else:
-                    # For other metrics, just use the raw value
-                    value_p = value
+                # Para cada arquivo no dataset A, encontre o arquivo correspondente no dataset B
+                for file_a in files_a:
+                    file_b = dir_b / file_a.name
+                    
+                    if not file_b.exists():
+                        continue
+                    
+                    try:
+                        # Carregar os dados
+                        map_a = np.load(file_a)
+                        map_b = np.load(file_b)
+                        
+                        # Garantir que não há NaNs
+                        map_a = np.nan_to_num(map_a)
+                        map_b = np.nan_to_num(map_b)
+                        
+                        # Aplainar os arrays para cálculo das métricas
+                        map_a_flat = map_a.flatten()
+                        map_b_flat = map_b.flatten()
+                        
+                        processed_files += 1
+                        
+                        # Obter a função de métrica apropriada
+                        metric_function = None
+                        if metric_type == 'pearson':
+                            metric_value = np.corrcoef(map_a_flat, map_b_flat)[0, 1]
+                        elif metric_type == 'rmse':
+                            metric_value = calculate_rmse(map_a_flat, map_b_flat)
+                        elif metric_type == 'residual':
+                            metric_value = calculate_residual_error(map_a_flat, map_b_flat)
+                        elif metric_type == 'max_residual':
+                            metric_value = calculate_max_residual_error(map_a_flat, map_b_flat)
+                        elif metric_type == 'min_residual':
+                            metric_value = calculate_min_residual_error(map_a_flat, map_b_flat)
+                        elif metric_type == 'r2':
+                            metric_value = calculate_r2_score(map_a_flat, map_b_flat)
+                        elif metric_type == 'mse':
+                            metric_value = calculate_mse(map_a_flat, map_b_flat)
+                        elif metric_type == 'mae':
+                            metric_value = calculate_mae(map_a_flat, map_b_flat)
+                        elif metric_type == 'cosine':
+                            metric_value = calculate_cosine_similarity(map_a_flat, map_b_flat)
+                        elif metric_type == 'huber':
+                            metric_value = calculate_huber_loss(map_a_flat, map_b_flat, huber_delta)
+                        
+                        # Calcular estatísticas de forma estritamente consistente
+                        stats = calculate_strict_stats(map_a, map_b)
+                        
+                        # Verificar consistência se solicitado
+                        if verify_stats:
+                            # Calcular mínimo e máximo combinados de forma tradicional
+                            both_maps = np.concatenate([map_a_flat, map_b_flat])
+                            trad_min = np.min(both_maps)
+                            trad_max = np.max(both_maps)
+                            
+                            # Verificar consistência
+                            if abs(stats['min_both'] - trad_min) > 1e-10 or abs(stats['max_both'] - trad_max) > 1e-10:
+                                print(f"INCONSISTENCY DETECTED in file {file_a.name}:")
+                                print(f"  Min A: {stats['min_a']:.6f}, Min B: {stats['min_b']:.6f}")
+                                print(f"  Strict Min Both: {stats['min_both']:.6f}, Traditional Min Both: {trad_min:.6f}")
+                                print(f"  Max A: {stats['max_a']:.6f}, Max B: {stats['max_b']:.6f}")
+                                print(f"  Strict Max Both: {stats['max_both']:.6f}, Traditional Max Both: {trad_max:.6f}")
+                        
+                        # Extrair data e hora do nome do arquivo
+                        try:
+                            epoch = np.datetime64(file_a.stem.replace('.', ':'))
+                        except:
+                            # Se falhar, usar um valor padrão para ordenação
+                            epoch = np.datetime64('1970-01-01T00:00:00')
+                            print(f"Warning: Could not parse datetime from filename {file_a.name}")
+                        
+                        # Calcular valor percentual para métricas normalizadas
+                        if metric_type in ['pearson', 'r2', 'cosine']:
+                            value_p = metric_value * 100  # Valor percentual
+                        elif metric_type == 'rmse' and stats['data_range'] != 0:
+                            value_p = (metric_value / stats['data_range']) * 100  # RMSE como % do range
+                        else:
+                            value_p = metric_value  # Usar valor bruto para outras métricas
+                        
+                        result_data = {
+                            'datetime': epoch,
+                            'comparison': f'{comparison[0]} x {comparison[1]}',
+                            'dataset_a': dataset_a,
+                            'dataset_b': dataset_b,
+                            'source_a': comparison[0],
+                            'source_b': comparison[1],
+                            'filename': file_a.name,
+                            metric_type: metric_value,
+                            f'{metric_type}_p': value_p,
+                            # Estatísticas estritamente consistentes
+                            'min_a': stats['min_a'],
+                            'max_a': stats['max_a'],
+                            'q3_a': stats['q3_a'],
+                            'min_b': stats['min_b'],
+                            'max_b': stats['max_b'],
+                            'q3_b': stats['q3_b'],
+                            'min_both': stats['min_both'],
+                            'max_both': stats['max_both'],
+                            'q3_both': stats['q3_both'],
+                            'data_range': stats['data_range']
+                        }
+                        
+                        # Para análises posteriores
+                        result_data['map_a'] = map_a_flat
+                        result_data['map_b'] = map_b_flat
+                        
+                        result.append(result_data)
+                        
+                        # Mostrar progresso a cada 10 arquivos
+                        if processed_files % 10 == 0:
+                            print(f"Processed {processed_files} file pairs...")
+                    
+                    except Exception as e:
+                        print(f"Error processing files {file_a} and {file_b}: {str(e)}")
+                        import traceback
+                        traceback.print_exc()
 
-                result_data = {
-                    'datetime': epoch,
-                    'comparison': f'{comparison[0]} x {comparison[1]}',
-                    'dataset_a': dataset_a,
-                    'dataset_b': dataset_b,
-                    'source_a': comparison[0],
-                    'source_b': comparison[1],
-                    'map_a': map_a,
-                    'map_b': map_b,
-                    metric_type: value,
-                    f'{metric_type}_p': value_p,
-                    # Additional statistics
-                    'min_a': min_a,
-                    'max_a': max_a,
-                    'q3_a': q3_a,
-                    'min_b': min_b,
-                    'max_b': max_b,
-                    'q3_b': q3_b,
-                    'min_both': min_both,
-                    'max_both': max_both,
-                    'q3_both': q3_both,
-                    'data_range': data_range
-                }
-                
-                result.append(result_data)
+    # Verificar se temos resultados para processar
+    if not result:
+        print("\nERROR: No data found for analysis. Please check if your files exist.")
+        print(f"Make sure you have directories with suffix '{dataset_suffix}' containing appropriate files.")
+        print("For SSIM, you need .png/.jpg files in 'interp_raster' directories.")
+        print("For other metrics, you need .npy files in 'interp' directories.")
+        exit(1)
 
+    print(f"\nProcessed {processed_files} file pairs successfully.")
+
+    # Criar o DataFrame
     df = pd.DataFrame(result)
+
+    # Salvar os resultados brutos
     df.to_csv(f'result_{metric_type}_with_stats.csv', index=False)
-    df.sort_values('datetime', inplace=True)
+    
+    # Ordenar por data
+    if 'datetime' in df.columns:
+        df.sort_values('datetime', inplace=True)
 
     # Dictionary to store aggregate metrics for each dataset
     dataset_metrics = defaultdict(list)
     dataset_total_metrics = defaultdict(float)
     dataset_count = defaultdict(int)
-    # Para armazenar tamanhos de amostras (para transformação Z de Fisher)
-    dataset_sample_sizes = defaultdict(list)
 
+    # Analisar resultados por comparação
     for comparison in comparisons:
-        for i, dataset_a in enumerate(datasets[comparison[0]]):
-            print(comparison[0].upper(), 'x', comparison[1].upper())
-
+        for i in range(min(len(datasets[comparison[0]]), len(datasets[comparison[1]]))):
+            dataset_a = datasets[comparison[0]][i]
             dataset_b = datasets[comparison[1]][i]
-            print(dataset_a, 'x', dataset_b)
-
+            
             comparison_type = f'{comparison[0]} x {comparison[1]}'
             selection = df.loc[(df['comparison'] == comparison_type)]
-            selection = selection.loc[selection['dataset_a'] == dataset_a]
+            selection = selection.loc[(selection['dataset_a'] == dataset_a) & (selection['dataset_b'] == dataset_b)]
+            
+            if selection.empty:
+                print(f"No data found for {dataset_a} x {dataset_b}")
+                continue
+                
+            print(f"\n{comparison[0].upper()} x {comparison[1].upper()}")
+            print(f"{dataset_a} x {dataset_b}")
             print(f"Number of comparisons: {len(selection)}")
-
-            map_a_concat = np.concatenate(selection['map_a'].values)
-            map_b_concat = np.concatenate(selection['map_b'].values)
             
-            # Calculate aggregated statistics
-            min_a_all = np.min(map_a_concat)
-            max_a_all = np.max(map_a_concat)
-            q3_a_all = np.percentile(map_a_concat, 75)
+            # Calcular métrica média para esta comparação
+            metric_values = selection[metric_type].values
+            metric_value = np.mean(metric_values)
             
-            min_b_all = np.min(map_b_concat)
-            max_b_all = np.max(map_b_concat)
-            q3_b_all = np.percentile(map_b_concat, 75)
+            # Armazenar valores para ranking
+            dataset_metrics[comparison[0]].extend(metric_values)
+            dataset_metrics[comparison[1]].extend(metric_values)
             
-            both_maps_all = np.concatenate([map_a_concat, map_b_concat])
-            min_both_all = np.min(both_maps_all)
-            max_both_all = np.max(both_maps_all)
-            q3_both_all = np.percentile(both_maps_all, 75)
-            data_range_all = max_both_all - min_both_all
+            dataset_total_metrics[comparison[0]] += sum(metric_values)
+            dataset_total_metrics[comparison[1]] += sum(metric_values)
+            dataset_count[comparison[0]] += len(metric_values)
+            dataset_count[comparison[1]] += len(metric_values)
             
-            # Print statistics for all data
+            # Calcular estatísticas médias garantidamente consistentes
+            mean_min_a = selection['min_a'].mean()
+            mean_max_a = selection['max_a'].mean()
+            mean_q3_a = selection['q3_a'].mean()
+            
+            mean_min_b = selection['min_b'].mean()
+            mean_max_b = selection['max_b'].mean()
+            mean_q3_b = selection['q3_b'].mean()
+            
+            # Garantir consistência nas médias combinadas
+            mean_min_both = min(mean_min_a, mean_min_b)
+            mean_max_both = max(mean_max_a, mean_max_b)
+            mean_q3_both = selection['q3_both'].mean()
+            mean_data_range = mean_max_both - mean_min_both
+            
+            # Mostrar estatísticas agregadas
             print("\nStatistics for All Data:")
-            print(f"Dataset A - Min: {min_a_all:.4f}, Max: {max_a_all:.4f}, Q3: {q3_a_all:.4f}")
-            print(f"Dataset B - Min: {min_b_all:.4f}, Max: {max_b_all:.4f}, Q3: {q3_b_all:.4f}")
-            print(f"Combined  - Min: {min_both_all:.4f}, Max: {max_both_all:.4f}, Q3: {q3_both_all:.4f}")
-            print(f"Data Range: {data_range_all:.4f}")
+            print(f"Dataset A - Min: {mean_min_a:.4f}, Max: {mean_max_a:.4f}, Q3: {mean_q3_a:.4f}")
+            print(f"Dataset B - Min: {mean_min_b:.4f}, Max: {mean_max_b:.4f}, Q3: {mean_q3_b:.4f}")
+            print(f"Combined  - Min: {mean_min_both:.4f}, Max: {mean_max_both:.4f}, Q3: {mean_q3_both:.4f}")
+            print(f"Data Range: {mean_data_range:.4f}")
             
-            # Calculate total metric for all data
-            metric_function = metric_functions[metric_type]
-            metric_value = metric_function(map_a_concat, map_b_concat)
-            
-            # Display different formats based on metric type
-            if metric_type == 'pearson':
-                print(f'Total correlation: {metric_value * 100:.2f}%')
+            # Exibir a métrica com formatação adequada
+            if metric_type == 'ssim':
+                print(f'Average Structural Similarity Index: {metric_value:.4f} ({metric_value * 100:.2f}%)')
+            elif metric_type == 'pearson':
+                print(f'Average Pearson Correlation: {metric_value:.4f} ({metric_value * 100:.2f}%)')
+            elif metric_type == 'r2':
+                print(f'Average R² Score: {metric_value:.4f} ({metric_value * 100:.2f}%)')
+            elif metric_type == 'cosine':
+                print(f'Average Cosine Similarity: {metric_value:.4f} ({metric_value * 100:.2f}%)')
             elif metric_type == 'rmse':
-                rmse_percent = (metric_value / data_range_all) * 100 if data_range_all != 0 else 0
-                print(f'Total RMSE: {metric_value:.4f} ({rmse_percent:.2f}% of data range)')
+                rmse_percent = (metric_value / mean_data_range) * 100 if mean_data_range != 0 else 0
+                print(f'Average RMSE: {metric_value:.4f} ({rmse_percent:.2f}% of data range)')
             elif metric_type == 'residual':
                 print(f'Average Residual Error: {metric_value:.4f}')
             elif metric_type == 'max_residual':
-                print(f'Maximum Residual Error: {metric_value:.4f}')
+                print(f'Average Maximum Residual Error: {metric_value:.4f}')
             elif metric_type == 'min_residual':
-                print(f'Minimum Residual Error ({min_residual_percentile}th percentile): {metric_value:.4f}')
-            elif metric_type == 'r2':
-                print(f'R² Score: {metric_value:.4f} ({metric_value * 100:.2f}%)')
+                print(f'Average Minimum Residual Error ({min_residual_percentile}th percentile): {metric_value:.4f}')
             elif metric_type == 'mse':
-                print(f'Mean Squared Error: {metric_value:.4f}')
+                print(f'Average Mean Squared Error: {metric_value:.4f}')
             elif metric_type == 'mae':
-                print(f'Mean Absolute Error: {metric_value:.4f}')
-            elif metric_type == 'cosine':
-                print(f'Cosine Similarity: {metric_value:.4f} ({metric_value * 100:.2f}%)')
+                print(f'Average Mean Absolute Error: {metric_value:.4f}')
             elif metric_type == 'huber':
-                print(f'Huber Loss (delta={huber_delta}): {metric_value:.4f}')
+                print(f'Average Huber Loss (delta={huber_delta}): {metric_value:.4f}')
             
-            # Store metrics for dataset comparison
-            dataset_metrics[comparison[0]].append(metric_value)
-            dataset_metrics[comparison[1]].append(metric_value)
-            
-            # Store sample sizes for Fisher Z transformation if needed
-            sample_size = len(map_a_concat)
-            dataset_sample_sizes[comparison[0]].append(sample_size)
-            dataset_sample_sizes[comparison[1]].append(sample_size)
-            
-            # Also track total metrics and counts for averaging later
-            dataset_total_metrics[comparison[0]] += metric_value
-            dataset_total_metrics[comparison[1]] += metric_value
-            dataset_count[comparison[0]] += 1
-            dataset_count[comparison[1]] += 1
+            # Análise mensal para dados com datetime
+            if 'datetime' in selection.columns:
+                for year in [2022, 2023, 2024]:
+                    for month in range(1, 13):
+                        month_data = selection.loc[(selection['datetime'].dt.month == month) &
+                                               (selection['datetime'].dt.year == year)]
+                        
+                        if not month_data.empty:
+                            month_name = pd.Timestamp(year=year, month=month, day=1).strftime('%B/%Y')
+                            month_metric = month_data[metric_type].mean()
+                            
+                            if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+                                print(f'{month_name}: {metric_type.upper()} = {month_metric:.4f} ({month_metric * 100:.2f}%)')
+                            else:
+                                print(f'{month_name}: {metric_type.upper()} = {month_metric:.4f}')
 
-            for year in [2022, 2023, 2024]:
-                mar = selection.loc[(selection['datetime'].dt.month == 3) &
-                                    (selection['datetime'].dt.year == year)]
-                jun = selection.loc[(selection['datetime'].dt.month == 6) &
-                                    (selection['datetime'].dt.year == year)]
-                sep = selection.loc[(selection['datetime'].dt.month == 9) &
-                                    (selection['datetime'].dt.year == year)]
-                dec = selection.loc[(selection['datetime'].dt.month == 12) &
-                                    (selection['datetime'].dt.year == year)]
-                
-                # Process each month if data exists
-                for month_data, month_name in [(mar, f"March/{year}"), 
-                                             (jun, f"June/{year}"), 
-                                             (sep, f"September/{year}"), 
-                                             (dec, f"December/{year}")]:
-                    if not month_data.empty:
-                        map_a_concat = np.concatenate(month_data['map_a'].values)
-                        map_b_concat = np.concatenate(month_data['map_b'].values)
-                        
-                        # Calculate monthly statistics
-                        min_a_month = np.min(map_a_concat)
-                        max_a_month = np.max(map_a_concat)
-                        q3_a_month = np.percentile(map_a_concat, 75)
-                        
-                        min_b_month = np.min(map_b_concat)
-                        max_b_month = np.max(map_b_concat)
-                        q3_b_month = np.percentile(map_b_concat, 75)
-                        
-                        both_maps_month = np.concatenate([map_a_concat, map_b_concat])
-                        min_both_month = np.min(both_maps_month)
-                        max_both_month = np.max(both_maps_month)
-                        q3_both_month = np.percentile(both_maps_month, 75)
-                        data_range_month = max_both_month - min_both_month
-                        
-                        # Print monthly statistics
-                        print(f"\nStatistics for {month_name}:")
-                        print(f"Dataset A - Min: {min_a_month:.4f}, Max: {max_a_month:.4f}, Q3: {q3_a_month:.4f}")
-                        print(f"Dataset B - Min: {min_b_month:.4f}, Max: {max_b_month:.4f}, Q3: {q3_b_month:.4f}")
-                        print(f"Combined  - Min: {min_both_month:.4f}, Max: {max_both_month:.4f}, Q3: {q3_both_month:.4f}")
-                        print(f"Data Range: {data_range_month:.4f}")
-                        
-                        # Calculate and print metric
-                        month_metric = metric_function(map_a_concat, map_b_concat)
-                        
-                        # Display different formats based on metric type
-                        if metric_type == 'pearson':
-                            print(f'Correlation ({month_name}): {month_metric * 100:.2f}%')
-                        elif metric_type == 'rmse':
-                            rmse_percent = (month_metric / data_range_month) * 100 if data_range_month != 0 else 0
-                            print(f'RMSE ({month_name}): {month_metric:.4f} ({rmse_percent:.2f}% of data range)')
-                        elif metric_type == 'residual':
-                            print(f'Average Residual Error ({month_name}): {month_metric:.4f}')
-                        elif metric_type == 'max_residual':
-                            print(f'Maximum Residual Error ({month_name}): {month_metric:.4f}')
-                        elif metric_type == 'min_residual':
-                            print(f'Minimum Residual Error ({month_name}, {min_residual_percentile}th percentile): {month_metric:.4f}')
-                        elif metric_type == 'r2':
-                            print(f'R² Score ({month_name}): {month_metric:.4f} ({month_metric * 100:.2f}%)')
-                        elif metric_type == 'mse':
-                            print(f'Mean Squared Error ({month_name}): {month_metric:.4f}')
-                        elif metric_type == 'mae':
-                            print(f'Mean Absolute Error ({month_name}): {month_metric:.4f}')
-                        elif metric_type == 'cosine':
-                            print(f'Cosine Similarity ({month_name}): {month_metric:.4f} ({month_metric * 100:.2f}%)')
-                        elif metric_type == 'huber':
-                            print(f'Huber Loss ({month_name}, delta={huber_delta}): {month_metric:.4f}')
-
-            print("\n" + "-"*50 + "\n")
-
-    # Calculate average metrics for each dataset
+    # Calcular métricas médias para cada dataset
     dataset_avg_metrics = {}
     
+    # Usar transformação de Fisher se necessário
     if needs_fisher_transform:
-        # Usar transformação Z de Fisher para métricas que precisam
+        # Criar valores Z para cada dataset
         dataset_z_values = defaultdict(list)
         
         for dataset, values in dataset_metrics.items():
-            for i, val in enumerate(values):
-                # Aplicar transformação de Fisher
+            for val in values:
                 try:
                     z_value = fisher_z_transform(val)
-                    # Obter o tamanho da amostra correspondente
-                    sample_size = dataset_sample_sizes[dataset][i]
-                    weight = sample_size - 3  # Peso recomendado para transformação Z
-                    # Armazenar valor Z e peso
-                    dataset_z_values[dataset].append((z_value, weight))
+                    dataset_z_values[dataset].append(z_value)
                 except:
-                    # Ignora valores problemáticos
                     pass
-        
-        # Calcular média ponderada dos valores Z e converter de volta
+                    
+        # Calcular média dos valores Z e transformar de volta
         for dataset in dataset_z_values:
             if dataset_z_values[dataset]:
-                # Aplicar média ponderada se houver pesos
-                total_weighted_z = sum(z * weight for z, weight in dataset_z_values[dataset])
-                total_weight = sum(weight for _, weight in dataset_z_values[dataset])
-                
-                if total_weight > 0:
-                    avg_z = total_weighted_z / total_weight
-                    dataset_avg_metrics[dataset] = fisher_z_inverse(avg_z)
-                else:
-                    # Média simples se não houver pesos válidos
-                    avg_z = sum(z for z, _ in dataset_z_values[dataset]) / len(dataset_z_values[dataset])
-                    dataset_avg_metrics[dataset] = fisher_z_inverse(avg_z)
+                avg_z = np.mean(dataset_z_values[dataset])
+                dataset_avg_metrics[dataset] = fisher_z_inverse(avg_z)
             else:
                 dataset_avg_metrics[dataset] = 0
-                
-        print(f"\nUsing Fisher Z transformation for averaging {metric_type} metrics")
+        
+        print("\nUsing Fisher Z transformation for averaging.")
     else:
-        # Para outras métricas, continua com a média normal
+        # Médias simples para outras métricas
         for dataset in dataset_total_metrics:
-            dataset_avg_metrics[dataset] = dataset_total_metrics[dataset] / dataset_count[dataset]
+            if dataset_count[dataset] > 0:
+                dataset_avg_metrics[dataset] = dataset_total_metrics[dataset] / dataset_count[dataset]
+            else:
+                dataset_avg_metrics[dataset] = 0
     
-    # Find the best dataset based on the metric
+    # Encontrar o melhor dataset
     if higher_is_better:
-        # Para métricas onde maior é melhor (pearson, r2, cosine)
         best_dataset = max(dataset_avg_metrics.items(), key=lambda x: x[1])
         worst_dataset = min(dataset_avg_metrics.items(), key=lambda x: x[1])
-        metric_name = metric_type.upper()
-        if metric_type == 'pearson':
-            metric_name = 'CORRELATION'
-        elif metric_type == 'r2':
-            metric_name = 'R² SCORE'
-        elif metric_type == 'cosine':
-            metric_name = 'COSINE SIMILARITY'
-            
-        print(f"\n===== DATASET {metric_name} ANALYSIS =====")
-        
-        if metric_type in ['pearson', 'r2', 'cosine']:
-            print(f"Best dataset: {best_dataset[0]} with average {metric_name.lower()} of {best_dataset[1]*100:.2f}%")
-            print(f"Worst dataset: {worst_dataset[0]} with average {metric_name.lower()} of {worst_dataset[1]*100:.2f}%")
-        else:
-            print(f"Best dataset: {best_dataset[0]} with average {metric_name.lower()} of {best_dataset[1]:.4f}")
-            print(f"Worst dataset: {worst_dataset[0]} with average {metric_name.lower()} of {worst_dataset[1]:.4f}")
     else:
-        # Para métricas onde menor é melhor (rmse, residuals, mse, mae, huber)
         best_dataset = min(dataset_avg_metrics.items(), key=lambda x: x[1])
         worst_dataset = max(dataset_avg_metrics.items(), key=lambda x: x[1])
-        metric_name = metric_type.upper()
-        if metric_type == 'rmse':
-            metric_name = 'RMSE'
-        elif metric_type == 'residual':
-            metric_name = 'RESIDUAL ERROR'
-        elif metric_type == 'max_residual':
-            metric_name = 'MAXIMUM RESIDUAL ERROR'
-        elif metric_type == 'min_residual':
-            metric_name = f'MINIMUM RESIDUAL ERROR ({min_residual_percentile}th PERCENTILE)'
-        elif metric_type == 'mse':
-            metric_name = 'MEAN SQUARED ERROR'
-        elif metric_type == 'mae':
-            metric_name = 'MEAN ABSOLUTE ERROR'
-        elif metric_type == 'huber':
-            metric_name = 'HUBER LOSS'
-            
-        print(f"\n===== DATASET {metric_name} ANALYSIS =====")
-        print(f"Best dataset (lowest error): {best_dataset[0]} with average {metric_name.lower()} of {best_dataset[1]:.4f}")
-        print(f"Worst dataset (highest error): {worst_dataset[0]} with average {metric_name.lower()} of {worst_dataset[1]:.4f}")
     
-    # Print ranking of all datasets
+    # Determinar nome apropriado para a métrica
+    if metric_type == 'ssim':
+        metric_name = "STRUCTURAL SIMILARITY INDEX"
+    elif metric_type == 'pearson':
+        metric_name = "PEARSON CORRELATION"
+    elif metric_type == 'r2':
+        metric_name = "R² SCORE"
+    elif metric_type == 'rmse':
+        metric_name = "ROOT MEAN SQUARED ERROR"
+    elif metric_type == 'residual':
+        metric_name = "RESIDUAL ERROR"
+    elif metric_type == 'max_residual':
+        metric_name = "MAXIMUM RESIDUAL ERROR"
+    elif metric_type == 'min_residual':
+        metric_name = f"MINIMUM RESIDUAL ERROR ({min_residual_percentile}th PERCENTILE)"
+    elif metric_type == 'mse':
+        metric_name = "MEAN SQUARED ERROR"
+    elif metric_type == 'mae':
+        metric_name = "MEAN ABSOLUTE ERROR"
+    elif metric_type == 'cosine':
+        metric_name = "COSINE SIMILARITY"
+    elif metric_type == 'huber':
+        metric_name = f"HUBER LOSS (delta={huber_delta})"
+    else:
+        metric_name = metric_type.upper()
+    
+    print(f"\n===== DATASET {metric_name} ANALYSIS =====")
+    
+    if higher_is_better:
+        print(f"Best dataset: {best_dataset[0]} with average {metric_type} of {best_dataset[1]:.4f}")
+        print(f"Worst dataset: {worst_dataset[0]} with average {metric_type} of {worst_dataset[1]:.4f}")
+        
+        # Adicionar porcentagem para métricas específicas
+        if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+            print(f"Best percentage: {best_dataset[1] * 100:.2f}%")
+            print(f"Worst percentage: {worst_dataset[1] * 100:.2f}%")
+    else:
+        print(f"Best dataset (lowest error): {best_dataset[0]} with average {metric_type} of {best_dataset[1]:.4f}")
+        print(f"Worst dataset (highest error): {worst_dataset[0]} with average {metric_type} of {worst_dataset[1]:.4f}")
+    
+    # Imprimir ranking de todos os datasets
     print("\nDataset Ranking (from best to worst):")
     if higher_is_better:
-        # Sort by metric (highest to lowest) for metrics where higher is better
         sorted_datasets = sorted(dataset_avg_metrics.items(), key=lambda x: x[1], reverse=True)
-        for i, (dataset, avg_val) in enumerate(sorted_datasets, 1):
-            if metric_type in ['pearson', 'r2', 'cosine']:
-                print(f"{i}. {dataset}: {avg_val*100:.2f}%")
-            else:
-                print(f"{i}. {dataset}: {avg_val:.4f}")
     else:
-        # Sort by metric (lowest to highest) for metrics where lower is better
         sorted_datasets = sorted(dataset_avg_metrics.items(), key=lambda x: x[1])
-        for i, (dataset, avg_val) in enumerate(sorted_datasets, 1):
+        
+    for i, (dataset, avg_val) in enumerate(sorted_datasets, 1):
+        if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+            print(f"{i}. {dataset}: {avg_val:.4f} ({avg_val * 100:.2f}%)")
+        else:
             print(f"{i}. {dataset}: {avg_val:.4f}")
     
-    # Save overall metrics to a separate file
+    # Salvar métricas gerais em um arquivo separado
     overall_metrics = pd.DataFrame({
         'dataset': list(dataset_avg_metrics.keys()),
         f'avg_{metric_type}': list(dataset_avg_metrics.values())
     })
+    
+    if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+        overall_metrics[f'avg_{metric_type}_percent'] = [v * 100 for v in dataset_avg_metrics.values()]
+    
+    overall_metrics.to_csv(f'dataset_ranking_{metric_type}.csv', index=False)
+    print(f"\nDataset ranking saved to 'dataset_ranking_{metric_type}.csv'")
+    
+    # Resumo final
+    print("\n===== COMPUTATION SUMMARY =====")
+    print(f"Metric: {metric_name}")
+    print(f"Dataset type: {dataset_suffix}")
+    print(f"Files processed: {processed_files}")
+    print(f"Datasets compared: {len(dataset_avg_metrics)}")
+    print("Strict statistics calculation to ensure consistency")
+    print("Done!")
     
     if metric_type in ['pearson', 'r2', 'cosine']:
         overall_metrics[f'avg_{metric_type}_percent'] = overall_metrics[f'avg_{metric_type}'] * 100
