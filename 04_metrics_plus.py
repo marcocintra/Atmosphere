@@ -8,14 +8,11 @@ from skimage.metrics import structural_similarity as ssim
 from skimage.io import imread
 import warnings
 
-# Suprimir avisos para melhor legibilidade
 warnings.filterwarnings('ignore')
 
-# Função para calcular o RMSE
 def calculate_rmse(y_true, y_pred):
     return np.sqrt(np.mean((y_true - y_pred) ** 2))
 
-# Função para calcular o RMSE como porcentagem da amplitude
 def calculate_rmse_percent(y_true, y_pred):
     rmse = calculate_rmse(y_true, y_pred)
     # Combinamos ambos os arrays para encontrar a amplitude total
@@ -26,7 +23,6 @@ def calculate_rmse_percent(y_true, y_pred):
         return 0
     return (rmse / data_range) * 100
 
-# Funções para a transformação Z de Fisher
 def fisher_z_transform(r):
     """Transforma correlação r para valor z"""
     # Limita r para evitar problemas com valores extremos (-1 ou 1)
@@ -40,7 +36,6 @@ def fisher_z_inverse(z):
     """Transforma z de volta para correlação r"""
     return (np.exp(2 * z) - 1) / (np.exp(2 * z) + 1)
 
-# Funções para as métricas
 def calculate_residual_error(y_true, y_pred):
     """Calcula o erro residual médio"""
     return np.mean(y_true - y_pred)
@@ -203,22 +198,18 @@ def calculate_strict_stats(map_a, map_b):
     q1_b = float(np.percentile(map_b_flat, 25))
     q3_b = float(np.percentile(map_b_flat, 75))
     
-    # Calcular estatísticas combinadas GARANTIDAMENTE consistentes
     min_both = min(min_a, min_b)
     max_both = max(max_a, max_b)
     
-    # Criar array combinado apenas para estatísticas que realmente precisam do conjunto combinado
     both_flats = np.concatenate([map_a_flat, map_b_flat])
     mean_both = float(np.mean(both_flats))
     median_both = float(np.median(both_flats))
     q1_both = float(np.percentile(both_flats, 25))
     q3_both = float(np.percentile(both_flats, 75))
     
-    # Verificação explícita para garantir max_both = max(max_a, max_b)
     max_both_calculated = max(max_a, max_b)
     max_both_direct = float(np.max(both_flats))
     
-    # Se houver discrepância, usar o valor garantidamente correto
     if abs(max_both_calculated - max_both_direct) > 1e-10:
         print(f"AVISO: Discrepância no cálculo do máximo combinado!")
         print(f"  max_a = {max_a:.6f}, max_b = {max_b:.6f}")
@@ -226,7 +217,6 @@ def calculate_strict_stats(map_a, map_b):
         print(f"  np.max(both_flats) = {max_both_direct:.6f}")
         print(f"  Usando o valor correto: max(max_a, max_b)")
     
-    # Usar a definição matematicamente correta, independentemente do valor direto
     max_both = max_both_calculated
     
     # Amplitude de dados
@@ -257,7 +247,7 @@ def calculate_strict_stats(map_a, map_b):
     }
 
 if __name__ == '__main__':
-    # Configuração do parser de argumentos
+    
     parser = argparse.ArgumentParser(description='Calculate metrics between datasets')
     parser.add_argument('--metric', type=str, 
                         choices=['pearson', 'rmse', 'residual', 'max_residual', 'min_residual', 
@@ -278,7 +268,6 @@ if __name__ == '__main__':
                         help='Check an existing results CSV file for max_both consistency')
     args = parser.parse_args()
     
-    # Verificar arquivo existente se especificado
     if args.check_existing:
         print(f"Verificando consistência em arquivo existente: {args.check_existing}")
         existing_df = pd.read_csv(args.check_existing)
@@ -722,7 +711,6 @@ if __name__ == '__main__':
             dataset_count[comparison[0]] += len(metric_values)
             dataset_count[comparison[1]] += len(metric_values)
             
-            # Calcular estatísticas médias garantidamente consistentes
             mean_min_a = selection['min_a'].mean()
             mean_max_a = selection['max_a'].mean()
             mean_mean_a = selection['mean_a'].mean()  # média das médias
@@ -737,7 +725,6 @@ if __name__ == '__main__':
             mean_q1_b = selection['q1_b'].mean()
             mean_q3_b = selection['q3_b'].mean()
             
-            # CORREÇÃO: Garantir consistência nas médias combinadas
             mean_min_both = min(mean_min_a, mean_min_b)
             mean_max_both = max(mean_max_a, mean_max_b)  # Forçar o valor correto para o máximo combinado
             mean_mean_both = selection['mean_both'].mean()
