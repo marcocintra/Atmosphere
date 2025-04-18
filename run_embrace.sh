@@ -7,6 +7,9 @@ DATASETS=(
 mapas1_embrace_2022_2024_0800
 mapas1_embrace_2022_2024_1600
 mapas1_embrace_2022_2024_2000_2200_0000_0200_0400
+mapas3_embrace_2024_0800_30m
+mapas3_embrace_2024_1600_30m
+mapas3_embrace_2024_2000_2200_0000_0200_0400_30m
 )
 
 for dataset in "${DATASETS[@]}"
