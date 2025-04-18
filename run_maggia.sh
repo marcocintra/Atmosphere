@@ -12,7 +12,7 @@ mapas2_maggia_2022_2024_1600
 mapas2_maggia_2022_2024_2000_2200_0000_0200_0400
 mapas3_maggia_2024_0800_30m
 mapas3_maggia_2024_1600_30m
-mapas3_maggia_2024_2000_2200_0000_0200_0400_30m
+mapas3_maggia_2024_2000_0400_30m
 )
 
 for dataset in "${DATASETS[@]}"
