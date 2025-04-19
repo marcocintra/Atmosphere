@@ -266,6 +266,8 @@ if __name__ == '__main__':
                         help='Number of top maps to display (default: 10)')
     parser.add_argument('--check-existing', type=str, default=None,
                         help='Check an existing results CSV file for max_both consistency')
+    parser.add_argument("--filter-mapas3", action="store_true",
+                    help="Filtra apenas diretórios que começam com 'mapas3'")
     args = parser.parse_args()
     
     if args.check_existing:
