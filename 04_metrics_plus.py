@@ -54,7 +54,10 @@ def calculate_residual_error(y_true, y_pred):
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     if np.sum(valid_mask) < 2:
         return np.nan
-    return np.mean(np.abs(y_true[valid_mask] - y_pred[valid_mask]))
+    residual = np.mean(np.abs(y_true[valid_mask] - y_pred[valid_mask]))
+    if residual < 0:
+        print(f"WARNING: Negative residual detected: {residual}")
+    return residual
 
 def calculate_max_residual_error(y_true, y_pred):
     """Calcula o erro residual máximo, tratando casos especiais."""
@@ -389,6 +392,8 @@ if __name__ == '__main__':
                         metric_value = calculate_mae(map_a_flat, map_b_flat)
                     elif metric_type == 'residual':
                         metric_value = calculate_residual_error(map_a_flat, map_b_flat)
+                        if not np.isnan(metric_value) and metric_value < 0:
+                            print(f"ERROR: Negative residual computed for {file_a}: {metric_value}")
                     elif metric_type == 'max_residual':
                         metric_value = calculate_max_residual_error(map_a_flat, map_b_flat)
                     elif metric_type == 'min_residual':
@@ -475,12 +480,15 @@ if __name__ == '__main__':
             metric_values = selection[metric_type].values
             valid_metrics = metric_values[~np.isnan(metric_values)]
             
+            if metric_type == 'residual' and any(v < 0 for v in valid_metrics):
+                print(f"WARNING: Negative residuals detected in {dataset_a} x {dataset_b}: {valid_metrics}")
+            
             if len(valid_metrics) > 0:
                 if metric_type in ['pearson', 'r2']:
                     z_values = [fisher_z_transform(v) for v in valid_metrics if not np.isnan(fisher_z_transform(v))]
                     metric_value = fisher_z_inverse(np.mean(z_values)) if z_values else np.nan
                 else:
-                    metric_value = np.nanmean(valid_metrics)
+                    metric_value = np.nanmean(np.abs(valid_metrics)) if metric_type == 'residual' else np.nanmean(valid_metrics)
             else:
                 metric_value = np.nan
             
@@ -580,7 +588,7 @@ if __name__ == '__main__':
                                                  (selection['datetime'].dt.year == year)]
                         if not month_data.empty:
                             month_name = pd.Timestamp(year=year, month=month, day=1).strftime('%B/%Y')
-                            month_metric = np.nanmean(month_data[metric_type])
+                            month_metric = np.nanmean(np.abs(month_data[metric_type])) if metric_type == 'residual' else np.nanmean(month_data[metric_type])
                             if metric_type in ['pearson', 'r2', 'cosine', 'ssim', 'rmse', 'residual']:
                                 print(f'{month_name}: {metric_type.upper()} = {month_metric:.4f} ({month_metric * 100:.2f}% if not np.isnan(month_metric) else "NaN%")')
                             else:
@@ -601,7 +609,7 @@ if __name__ == '__main__':
                     dataset_avg_metrics[dataset] = np.nan
                     print(f"WARNING: No valid Z values for {dataset}")
             else:
-                dataset_avg_metrics[dataset] = np.mean(valid_metrics)
+                dataset_avg_metrics[dataset] = np.mean(np.abs(valid_metrics)) if metric_type == 'residual' else np.mean(valid_metrics)
         else:
             dataset_avg_metrics[dataset] = np.nan
             print(f"WARNING: No valid metrics for {dataset}")
@@ -632,7 +640,7 @@ if __name__ == '__main__':
           (f" ({worst_dataset[1] * 100:.2f}% if not np.isnan(worst_dataset[1]) else 'NaN%')" if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] else ""))
     
     print("\nDataset Ranking (from best to worst):")
-    sorted_datasets = sorted(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('-inf'), reverse=higher_is_better)
+    sorted_datasets = sorted(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'), reverse=higher_is_better)
     for i, (dataset, avg_val) in enumerate(sorted_datasets, 1):
         print(f"{i}. {dataset}: {avg_val:.4f}" + 
               (f" ({avg_val * 100:.2f}% if not np.isnan(avg_val) else 'NaN%')" if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] else ""))
