@@ -15,7 +15,7 @@ def calculate_pearson(y_true, y_pred):
     if len(y_true) == 0 or len(y_pred) == 0 or np.all(np.isnan(y_true)) or np.all(np.isnan(y_pred)):
         return np.nan
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
-    if np.sum(valid_mask) < 2:  # Pelo menos 2 pontos válidos necessários
+    if np.sum(valid_mask) < 2:
         return np.nan
     return np.corrcoef(y_true[valid_mask], y_pred[valid_mask])[0, 1]
 
@@ -50,11 +50,11 @@ def calculate_mae(y_true, y_pred):
     return mean_absolute_error(y_true[valid_mask], y_pred[valid_mask])
 
 def calculate_residual_error(y_true, y_pred):
-    """Calcula o erro residual médio, tratando casos especiais."""
+    """Calcula o erro residual médio absoluto, tratando casos especiais."""
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     if np.sum(valid_mask) < 2:
         return np.nan
-    return np.mean(y_true[valid_mask] - y_pred[valid_mask])
+    return np.mean(np.abs(y_true[valid_mask] - y_pred[valid_mask]))
 
 def calculate_max_residual_error(y_true, y_pred):
     """Calcula o erro residual máximo, tratando casos especiais."""
@@ -134,7 +134,7 @@ def fisher_z_inverse(z):
     return (np.exp(2 * z) - 1) / (np.exp(2 * z) + 1)
 
 def calculate_strict_stats(map_a, map_b):
-    """Calcula estatísticas consistentes para os mapas, sem Q1/Q3."""
+    """Calcula estatísticas consistentes para os mapas, sem Q1 e Q3."""
     map_a_flat = map_a.flatten() if len(map_a.shape) > 1 else map_a
     map_b_flat = map_b.flatten() if len(map_b.shape) > 1 else map_b
     
@@ -170,8 +170,8 @@ def calculate_strict_stats(map_a, map_b):
     return {
         'min_a': min_a, 'max_a': max_a, 'mean_a': mean_a, 'median_a': median_a,
         'min_b': min_b, 'max_b': max_b, 'mean_b': mean_b, 'median_b': median_b,
-        'min_both': min_both, 'max_both': max_both, 'mean_both': mean_both, 'median_both': median_both,
-        'data_range': data_range
+        'min_both': min_both, 'max_both': max_both, 'mean_both': mean_both, 
+        'median_both': median_both, 'data_range': data_range
     }
 
 def load_image(filepath):
@@ -212,7 +212,7 @@ def verify_combined_stats(selection):
             print(f"  max_both armazenado = {max_both:.6f}")
             print(f"  max_both correto = {correct_max:.6f}")
     if inconsistencies > 0:
-        print(f"\nTotal de inconsistências encontradas: {inconsistencies} de {len(selection)} registros")
+        print(f"\nTotal de inconsistências encontradas: {inconsistências} de {len(selection)} registros")
     else:
         print("\nVerificação de estatísticas combinadas: Todos os valores corretos!")
 
@@ -254,43 +254,42 @@ if __name__ == '__main__':
     filter_mapas3 = args.filter_mapas3
     
     higher_is_better = metric_type in ['pearson', 'r2', 'cosine', 'ssim']
-    needs_fisher_transform = metric_type in ['pearson', 'r2']
     
     base_datasets = {
         'embrace': [
-            # 'mapas1_embrace_2022_2024_0800',
-            # 'mapas1_embrace_2022_2024_1600',
-            # 'mapas1_embrace_2022_2024_2000_2200_0000_0200_0400',
+            'mapas1_embrace_2022_2024_0800',
+            'mapas1_embrace_2022_2024_1600',
+            'mapas1_embrace_2022_2024_2000_2200_0000_0200_0400',
             'mapas3_embrace_2024_0800_30m',
             'mapas3_embrace_2024_1600_30m',
             'mapas3_embrace_2024_2000_0400_30m'
         ],
-        # 'igs': [
-        #     'mapas1_igs_2022_2024_0800',
-        #     'mapas1_igs_2022_2024_1600',
-        #     'mapas1_igs_2022_2024_2000_2200_0000_0200_0400',
-        #     'mapas2_igs_2022_2024_0800',
-        #     'mapas2_igs_2022_2024_1600',
-        #     'mapas2_igs_2022_2024_2000_2200_0000_0200_0400'
-        # ],
+        'igs': [
+            'mapas1_igs_2022_2024_0800',
+            'mapas1_igs_2022_2024_1600',
+            'mapas1_igs_2022_2024_2000_2200_0000_0200_0400',
+            'mapas2_igs_2022_2024_0800',
+            'mapas2_igs_2022_2024_1600',
+            'mapas2_igs_2022_2024_2000_2200_0000_0200_0400'
+        ],
         'maggia': [
-            # 'mapas1_maggia_2022_2024_0800',
-            # 'mapas1_maggia_2022_2024_1600',
-            # 'mapas1_maggia_2022_2024_2000_2200_0000_0200_0400',
-            # 'mapas2_maggia_2022_2024_0800',
-            # 'mapas2_maggia_2022_2024_1600',
-            # 'mapas2_maggia_2024_2000_2200_0000_0200_0400',
+            'mapas1_maggia_2022_2024_0800',
+            'mapas1_maggia_2022_2024_1600',
+            'mapas1_maggia_2022_2024_2000_2200_0000_0200_0400',
+            'mapas2_maggia_2022_2024_0800',
+            'mapas2_maggia_2024_1600_30m',
+            'mapas2_maggia_2022_2024_2000_2200_0000_0200_0400',
             'mapas3_maggia_2024_0800_30m',
             'mapas3_maggia_2024_1600_30m',
             'mapas3_maggia_2024_2000_0400_30m'
         ],
         'nagoya': [
-            # 'mapas1_nagoya_2022_2024_0800',
-            # 'mapas1_nagoya_2022_2024_1600',
-            # 'mapas1_nagoya_2022_2024_2000_2200_0000_0200_0400',
-            # 'mapas2_nagoya_2022_2024_0800',
-            # 'mapas2_nagoya_2022_2024_1600',
-            # 'mapas2_nagoya_2022_2024_2000_2200_0000_0200_0400',
+            'mapas1_nagoya_2022_2024_0800',
+            'mapas1_nagoya_2022_2024_1600',
+            'mapas1_nagoya_2022_2024_2000_2200_0000_0200_0400',
+            'mapas2_nagoya_2022_2024_0800',
+            'mapas2_nagoya_2022_2024_1600',
+            'mapas2_nagoya_2022_2024_2000_2200_0000_0200_0400',
             'mapas3_nagoya_2024_0800_30m',
             'mapas3_nagoya_2024_1600_30m',
             'mapas3_nagoya_2024_2000_0400_30m'
@@ -302,12 +301,8 @@ if __name__ == '__main__':
                 for source, dataset_list in base_datasets.items()}
     
     comparisons = [
-        # ['embrace', 'igs'],
-        ['embrace', 'maggia'],
-        ['embrace', 'nagoya'],
-        # ['igs', 'maggia'],
-        # ['igs', 'nagoya'],
-        ['maggia', 'nagoya']
+        ['embrace', 'igs'], ['embrace', 'maggia'], ['embrace', 'nagoya'],
+        ['igs', 'maggia'], ['igs', 'nagoya'], ['maggia', 'nagoya']
     ]
     
     base_dir = Path('.').resolve() / 'output'
@@ -317,8 +312,6 @@ if __name__ == '__main__':
     print(f"Calculating {metric_type.upper()} metrics...")
     print(f"Using dataset suffix: '{dataset_suffix}'")
     print(f"Higher values are better: {'YES' if higher_is_better else 'NO'}")
-    print(f"Using Fisher Z transform: {'YES' if needs_fisher_transform else 'NO'}")
-    print(f"Displaying top {top_n} maps for each comparison")
     
     existing_dirs = [path for path in base_dir.glob('*') if path.is_dir() and dataset_suffix in path.name]
     if not existing_dirs:
@@ -382,6 +375,7 @@ if __name__ == '__main__':
                     map_b_flat = map_b.flatten()
                     
                     processed_files += 1
+                    stats = calculate_strict_stats(map_a, map_b)
                     
                     if metric_type == 'pearson':
                         metric_value = calculate_pearson(map_a_flat, map_b_flat)
@@ -406,8 +400,6 @@ if __name__ == '__main__':
                     elif metric_type == 'ssim':
                         metric_value = calculate_ssim(map_a, map_b)
                     
-                    stats = calculate_strict_stats(map_a, map_b)
-                    
                     if verify_stats and not np.isnan(stats['min_both']) and not np.isnan(stats['max_both']):
                         both_maps = np.concatenate([map_a_flat[~np.isnan(map_a_flat)], map_b_flat[~np.isnan(map_b_flat)]])
                         trad_min = np.min(both_maps) if len(both_maps) > 0 else np.nan
@@ -423,7 +415,7 @@ if __name__ == '__main__':
                         print(f"Warning: Could not parse datetime from filename {file_a.name}")
                     
                     value_p = metric_value * 100 if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] and not np.isnan(metric_value) else \
-                              (metric_value / stats['data_range'] * 100 if metric_type == 'rmse' and stats['data_range'] != 0 and not np.isnan(metric_value) else metric_value)
+                              (metric_value / stats['data_range'] * 100 if metric_type in ['rmse', 'residual'] and stats['data_range'] != 0 and not np.isnan(metric_value) else metric_value)
                     
                     result_data = {
                         'datetime': epoch,
@@ -453,6 +445,7 @@ if __name__ == '__main__':
     df = pd.DataFrame(result)
     df.to_csv(f'result_{metric_type}_with_stats.csv', index=False)
     if 'datetime' in df.columns:
+        df['datetime'] = pd.to_datetime(df['datetime'])
         df.sort_values('datetime', inplace=True)
     
     dataset_metrics = defaultdict(list)
@@ -481,7 +474,15 @@ if __name__ == '__main__':
             
             metric_values = selection[metric_type].values
             valid_metrics = metric_values[~np.isnan(metric_values)]
-            metric_value = np.nanmean(metric_values) if len(valid_metrics) > 0 else np.nan
+            
+            if len(valid_metrics) > 0:
+                if metric_type in ['pearson', 'r2']:
+                    z_values = [fisher_z_transform(v) for v in valid_metrics if not np.isnan(fisher_z_transform(v))]
+                    metric_value = fisher_z_inverse(np.mean(z_values)) if z_values else np.nan
+                else:
+                    metric_value = np.nanmean(valid_metrics)
+            else:
+                metric_value = np.nan
             
             if np.isnan(metric_value):
                 print(f"WARNING: Average {metric_type} is NaN for {dataset_a} x {dataset_b}")
@@ -520,9 +521,9 @@ if __name__ == '__main__':
             print(f"Data Range: {mean_data_range:.4f}")
             
             if metric_type == 'pearson':
-                print(f'Average Pearson Correlation: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%")')
+                print(f'Average Pearson Correlation: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%") (Fisher Z applied)')
             elif metric_type == 'r2':
-                print(f'Average R² Score: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%")')
+                print(f'Average R² Score: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%") (Fisher Z applied)')
             elif metric_type == 'ssim':
                 print(f'Average Structural Similarity Index: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%")')
             elif metric_type == 'cosine':
@@ -535,7 +536,8 @@ if __name__ == '__main__':
             elif metric_type == 'mae':
                 print(f'Average Mean Absolute Error: {metric_value:.4f}')
             elif metric_type == 'residual':
-                print(f'Average Residual Error: {metric_value:.4f}')
+                residual_percent = (metric_value / mean_data_range * 100) if not np.isnan(metric_value) and mean_data_range != 0 else np.nan
+                print(f'Average Mean Absolute Residual Error: {metric_value:.4f} ({residual_percent:.2f}% of data range if not np.isnan(residual_percent) else "NaN%")')
             elif metric_type == 'max_residual':
                 print(f'Average Maximum Residual Error: {metric_value:.4f}')
             elif metric_type == 'min_residual':
@@ -552,7 +554,7 @@ if __name__ == '__main__':
             for idx, row in enumerate(sorted_maps.itertuples(), 1):
                 file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
                 metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% if not np.isnan(getattr(row, f'{metric_type}_p')) else 'NaN%')" \
-                                if metric_type in ['pearson', 'r2', 'cosine', 'ssim', 'rmse'] else f"{getattr(row, metric_type):.4f}"
+                                if metric_type in ['pearson', 'r2', 'cosine', 'ssim', 'rmse', 'residual'] else f"{getattr(row, metric_type):.4f}"
                 
                 date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
                 
@@ -579,18 +581,18 @@ if __name__ == '__main__':
                         if not month_data.empty:
                             month_name = pd.Timestamp(year=year, month=month, day=1).strftime('%B/%Y')
                             month_metric = np.nanmean(month_data[metric_type])
-                            if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+                            if metric_type in ['pearson', 'r2', 'cosine', 'ssim', 'rmse', 'residual']:
                                 print(f'{month_name}: {metric_type.upper()} = {month_metric:.4f} ({month_metric * 100:.2f}% if not np.isnan(month_metric) else "NaN%")')
                             else:
                                 print(f'{month_name}: {metric_type.upper()} = {month_metric:.4f}')
     
     dataset_avg_metrics = {}
     
-    print("\nCalculating average metrics with Fisher Z transformation...")
+    print("\nCalculating average metrics...")
     for dataset in dataset_metrics:
         valid_metrics = [v for v in dataset_metrics[dataset] if not np.isnan(v)]
         if valid_metrics:
-            if needs_fisher_transform:
+            if metric_type in ['pearson', 'r2']:
                 z_values = [fisher_z_transform(v) for v in valid_metrics if not np.isnan(fisher_z_transform(v))]
                 if z_values:
                     avg_z = np.mean(z_values)
@@ -617,7 +619,7 @@ if __name__ == '__main__':
         'rmse': 'ROOT MEAN SQUARED ERROR',
         'mse': 'MEAN SQUARED ERROR',
         'mae': 'MEAN ABSOLUTE ERROR',
-        'residual': 'RESIDUAL ERROR',
+        'residual': 'MEAN ABSOLUTE RESIDUAL ERROR',
         'max_residual': 'MAXIMUM RESIDUAL ERROR',
         'min_residual': f'MINIMUM RESIDUAL ERROR ({min_residual_percentile}th PERCENTILE)',
         'huber': f'HUBER LOSS (delta={huber_delta})'
@@ -641,7 +643,7 @@ if __name__ == '__main__':
     for idx, row in enumerate(top_overall.itertuples(), 1):
         file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
         metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% if not np.isnan(getattr(row, f'{metric_type}_p')) else 'NaN%')" \
-                        if metric_type in ['pearson', 'r2', 'cosine', 'ssim', 'rmse'] else f"{getattr(row, metric_type):.4f}"
+                        if metric_type in ['pearson', 'r2', 'cosine', 'ssim', 'rmse', 'residual'] else f"{getattr(row, metric_type):.4f}"
         
         date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
         
@@ -664,7 +666,7 @@ if __name__ == '__main__':
         'dataset': list(dataset_avg_metrics.keys()),
         f'avg_{metric_type}': list(dataset_avg_metrics.values()),
         f'avg_{metric_type}_percent': [v * 100 if not np.isnan(v) else np.nan for v in dataset_avg_metrics.values()] 
-                                      if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] else None
+                                      if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] else [np.nan] * len(dataset_avg_metrics)
     })
     if overall_metrics[f'avg_{metric_type}_percent'].isna().all():
         overall_metrics = overall_metrics.drop(columns=[f'avg_{metric_type}_percent'])
