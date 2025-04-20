@@ -171,8 +171,8 @@ def calculate_stats(map_a, map_b):
     both_flats = np.concatenate([valid_a, valid_b])
     mean_both = float(np.mean(both_flats))
     median_both = float(np.median(both_flats))
-    q1_both = float(np.percentile(both_flats, 25))
-    q3_both = float(np.percentile(both_flats, 75))
+    q1_both = max(q1_a, q1_b) if not np.isnan(q1_a) and not np.isnan(q1_b) else np.nan
+    q3_both = max(q3_a, q3_b) if not np.isnan(q3_a) and not np.isnan(q3_b) else np.nan
     
     data_range = max_both - min_both if max_both != min_both else 1.0
     
@@ -594,7 +594,7 @@ if __name__ == '__main__':
                 print(f"   Comparação: {row.dataset_a} x {row.dataset_b}")
                 print(f"   Arquivos: {file_info}")
                 print(f"   {metric_type.upper()}: {metric_display}")
-                print(f"   Q3 {metric_type.upper()}: {row[f'{metric_type}_q3_a']:.4f} (A), {row[f'{metric_type}_q3_b']:.4f} (B)")
+                print(f"   Q3 {metric_type.upper()}: {getattr(row, f'{metric_type}_q3_a'):.4f} (A), {getattr(row, f'{metric_type}_q3_b'):.4f} (B)")
                 print(f"   Estatísticas do Dataset A:")
                 print(f"     Min: {row.min_a:.4f}, Q1: {row.q1_a:.4f}, Median: {row.median_a:.4f}, Mean: {row.mean_a:.4f}, Q3: {row.q3_a:.4f}, Max: {row.max_a:.4f}")
                 print(f"   Estatísticas do Dataset B:")
@@ -684,7 +684,7 @@ if __name__ == '__main__':
         print(f"   Comparação: {row.dataset_a} x {row.dataset_b}")
         print(f"   Arquivos: {file_info}")
         print(f"   {metric_type.upper()}: {metric_display}")
-        print(f"   Q3 {metric_type.upper()}: {row[f'{metric_type}_q3_a']:.4f} (A), {row[f'{metric_type}_q3_b']:.4f} (B)")
+        print(f"   Q3 {metric_type.upper()}: {getattr(row, f'{metric_type}_q3_a'):.4f} (A), {getattr(row, f'{metric_type}_q3_b'):.4f} (B)")
         print(f"   Estatísticas do Dataset A:")
         print(f"     Min: {row.min_a:.4f}, Q1: {row.q1_a:.4f}, Median: {row.median_a:.4f}, Mean: {row.mean_a:.4f}, Q3: {row.q3_a:.4f}, Max: {row.max_a:.4f}")
         print(f"   Estatísticas do Dataset B:")
