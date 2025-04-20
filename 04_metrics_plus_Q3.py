@@ -10,48 +10,60 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-def calculate_pearson(y_true, y_pred):
-    """Calcula a correlação de Pearson, tratando casos especiais."""
+def calculate_pearson(y_true, y_pred, q3_mask=None):
+    """Calcula a correlação de Pearson, considerando apenas pixels especificados pelo q3_mask."""
     if len(y_true) == 0 or len(y_pred) == 0 or np.all(np.isnan(y_true)) or np.all(np.isnan(y_pred)):
         return np.nan
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    if q3_mask is not None:
+        valid_mask = valid_mask & q3_mask
     if np.sum(valid_mask) < 2:
         return np.nan
     return np.corrcoef(y_true[valid_mask], y_pred[valid_mask])[0, 1]
 
-def calculate_r2_score(y_true, y_pred):
-    """Calcula o R², tratando casos especiais."""
+def calculate_r2_score(y_true, y_pred, q3_mask=None):
+    """Calcula o R², considerando apenas pixels especificados pelo q3_mask."""
     if len(y_true) == 0 or len(y_pred) == 0 or np.all(np.isnan(y_true)) or np.all(np.isnan(y_pred)):
         return np.nan
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    if q3_mask is not None:
+        valid_mask = valid_mask & q3_mask
     if np.sum(valid_mask) < 2:
         return np.nan
     return r2_score(y_true[valid_mask], y_pred[valid_mask])
 
-def calculate_rmse(y_true, y_pred):
-    """Calcula o RMSE, tratando casos especiais."""
+def calculate_rmse(y_true, y_pred, q3_mask=None):
+    """Calcula o RMSE, considerando apenas pixels especificados pelo q3_mask."""
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    if q3_mask is not None:
+        valid_mask = valid_mask & q3_mask
     if np.sum(valid_mask) < 2:
         return np.nan
     return np.sqrt(mean_squared_error(y_true[valid_mask], y_pred[valid_mask]))
 
-def calculate_mse(y_true, y_pred):
-    """Calcula o MSE, tratando casos especiais."""
+def calculate_mse(y_true, y_pred, q3_mask=None):
+    """Calcula o MSE, considerando apenas pixels especificados pelo q3_mask."""
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    if q3_mask is not None:
+        valid_mask = valid_mask & q3_mask
     if np.sum(valid_mask) < 2:
         return np.nan
     return mean_squared_error(y_true[valid_mask], y_pred[valid_mask])
 
-def calculate_mae(y_true, y_pred):
-    """Calcula o MAE, tratando casos especiais."""
+def calculate_mae(y_true, y_pred, q3_mask=None):
+    """Calcula o MAE, considerando apenas pixels especificados pelo q3_mask."""
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    if q3_mask is not None:
+        valid_mask = valid_mask & q3_mask
     if np.sum(valid_mask) < 2:
         return np.nan
     return mean_absolute_error(y_true[valid_mask], y_pred[valid_mask])
 
-def calculate_residual_error(y_true, y_pred):
-    """Calcula o erro residual médio absoluto, tratando casos especiais."""
+def calculate_residual_error(y_true, y_pred, q3_mask=None):
+    """Calcula o erro residual médio absoluto, considerando apenas pixels especificados pelo q3_mask."""
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    if q3_mask is not None:
+        valid_mask = valid_mask & q3_mask
     if np.sum(valid_mask) < 2:
         return np.nan
     residual = np.mean(np.abs(y_true[valid_mask] - y_pred[valid_mask]))
@@ -59,23 +71,29 @@ def calculate_residual_error(y_true, y_pred):
         print(f"WARNING: Negative residual detected: {residual}")
     return residual
 
-def calculate_max_residual_error(y_true, y_pred):
-    """Calcula o erro residual máximo, tratando casos especiais."""
+def calculate_max_residual_error(y_true, y_pred, q3_mask=None):
+    """Calcula o erro residual máximo, considerando apenas pixels especificados pelo q3_mask."""
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    if q3_mask is not None:
+        valid_mask = valid_mask & q3_mask
     if np.sum(valid_mask) < 2:
         return np.nan
     return np.max(np.abs(y_true[valid_mask] - y_pred[valid_mask]))
 
-def calculate_min_residual_error(y_true, y_pred, percentile=5.0):
-    """Calcula o erro residual no percentil especificado, tratando casos especiais."""
+def calculate_min_residual_error(y_true, y_pred, percentile=5.0, q3_mask=None):
+    """Calcula o erro residual no percentil especificado, considerando apenas pixels especificados pelo q3_mask."""
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    if q3_mask is not None:
+        valid_mask = valid_mask & q3_mask
     if np.sum(valid_mask) < 2:
         return np.nan
     return np.percentile(np.abs(y_true[valid_mask] - y_pred[valid_mask]), percentile)
 
-def calculate_cosine_similarity(y_true, y_pred):
-    """Calcula a similaridade de cosseno, tratando casos especiais."""
+def calculate_cosine_similarity(y_true, y_pred, q3_mask=None):
+    """Calcula a similaridade de cosseno, considerando apenas pixels especificados pelo q3_mask."""
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    if q3_mask is not None:
+        valid_mask = valid_mask & q3_mask
     if np.sum(valid_mask) < 2:
         return np.nan
     y_true_valid = y_true[valid_mask]
@@ -87,9 +105,11 @@ def calculate_cosine_similarity(y_true, y_pred):
         return np.nan
     return dot_product / (norm_y_true * norm_y_pred)
 
-def calculate_huber_loss(y_true, y_pred, delta=1.0):
-    """Calcula a perda de Huber, tratando casos especiais."""
+def calculate_huber_loss(y_true, y_pred, delta=1.0, q3_mask=None):
+    """Calcula a perda de Huber, considerando apenas pixels especificados pelo q3_mask."""
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    if q3_mask is not None:
+        valid_mask = valid_mask & q3_mask
     if np.sum(valid_mask) < 2:
         return np.nan
     errors = y_true[valid_mask] - y_pred[valid_mask]
@@ -98,13 +118,15 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0):
     linear = abs_errors - quadratic
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
-def calculate_ssim(y_true, y_pred):
-    """Calcula o SSIM, tratando casos especiais."""
+def calculate_ssim(y_true, y_pred, q3_mask=None):
+    """Calcula o SSIM, considerando apenas pixels especificados pelo q3_mask."""
     if len(y_true.shape) > 2 and y_true.shape[2] > 1:
         y_true = np.mean(y_true, axis=2)
     if len(y_pred.shape) > 2 and y_pred.shape[2] > 1:
         y_pred = np.mean(y_pred, axis=2)
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    if q3_mask is not None:
+        valid_mask = valid_mask & q3_mask.reshape(y_true.shape)
     if np.sum(valid_mask) < 2:
         return np.nan
     data_range = max(np.max(y_true[valid_mask]) - np.min(y_true[valid_mask]), 
@@ -136,8 +158,8 @@ def fisher_z_inverse(z):
         return np.nan
     return (np.exp(2 * z) - 1) / (np.exp(2 * z) + 1)
 
-def calculate_stats(map_a, map_b):
-    """Calcula estatísticas completas para os mapas, incluindo Q1 e Q3."""
+def calculate_strict_stats(map_a, map_b):
+    """Calcula estatísticas consistentes para os mapas, sem Q1 e Q3."""
     map_a_flat = map_a.flatten() if len(map_a.shape) > 1 else map_a
     map_b_flat = map_b.flatten() if len(map_b.shape) > 1 else map_b
     
@@ -146,24 +168,20 @@ def calculate_stats(map_a, map_b):
     
     if len(valid_a) == 0 or len(valid_b) == 0:
         return {key: np.nan for key in [
-            'min_a', 'max_a', 'mean_a', 'median_a', 'q1_a', 'q3_a',
-            'min_b', 'max_b', 'mean_b', 'median_b', 'q1_b', 'q3_b',
-            'min_both', 'max_both', 'mean_both', 'median_both', 'q1_both', 'q3_both', 'data_range'
+            'min_a', 'max_a', 'mean_a', 'median_a',
+            'min_b', 'max_b', 'mean_b', 'median_b',
+            'min_both', 'max_both', 'mean_both', 'median_both', 'data_range'
         ]}
     
     min_a = float(np.min(valid_a))
     max_a = float(np.max(valid_a))
     mean_a = float(np.mean(valid_a))
     median_a = float(np.median(valid_a))
-    q1_a = float(np.percentile(valid_a, 25))
-    q3_a = float(np.percentile(valid_a, 75))
     
     min_b = float(np.min(valid_b))
     max_b = float(np.max(valid_b))
     mean_b = float(np.mean(valid_b))
     median_b = float(np.median(valid_b))
-    q1_b = float(np.percentile(valid_b, 25))
-    q3_b = float(np.percentile(valid_b, 75))
     
     min_both = min(min_a, min_b)
     max_both = max(max_a, max_b)
@@ -171,16 +189,14 @@ def calculate_stats(map_a, map_b):
     both_flats = np.concatenate([valid_a, valid_b])
     mean_both = float(np.mean(both_flats))
     median_both = float(np.median(both_flats))
-    q1_both = max(q1_a, q1_b) if not np.isnan(q1_a) and not np.isnan(q1_b) else np.nan
-    q3_both = max(q3_a, q3_b) if not np.isnan(q3_a) and not np.isnan(q3_b) else np.nan
     
     data_range = max_both - min_both if max_both != min_both else 1.0
     
     return {
-        'min_a': min_a, 'max_a': max_a, 'mean_a': mean_a, 'median_a': median_a, 'q1_a': q1_a, 'q3_a': q3_a,
-        'min_b': min_b, 'max_b': max_b, 'mean_b': mean_b, 'median_b': median_b, 'q1_b': q1_b, 'q3_b': q3_b,
-        'min_both': min_both, 'max_both': max_both, 'mean_both': mean_both, 'median_both': median_both, 
-        'q1_both': q1_both, 'q3_both': q3_both, 'data_range': data_range
+        'min_a': min_a, 'max_a': max_a, 'mean_a': mean_a, 'median_a': median_a,
+        'min_b': min_b, 'max_b': max_b, 'mean_b': mean_b, 'median_b': median_b,
+        'min_both': min_both, 'max_both': max_both, 'mean_both': mean_both, 
+        'median_both': median_both, 'data_range': data_range
     }
 
 def load_image(filepath):
@@ -205,31 +221,28 @@ def load_image(filepath):
         return None
 
 def verify_combined_stats(selection):
-    """Verifica consistência das estatísticas combinadas, incluindo Q3."""
+    """Verifica consistência das estatísticas combinadas."""
     inconsistencies = 0
     for idx, row in selection.iterrows():
         max_a = row['max_a']
         max_b = row['max_b']
         max_both = row['max_both']
-        q3_a = row['q3_a']
-        q3_b = row['q3_b']
-        q3_both = row['q3_both']
-        if np.isnan(max_a) or np.isnan(max_b) or np.isnan(max_both) or np.isnan(q3_a) or np.isnan(q3_b) or np.isnan(q3_both):
+        if np.isnan(max_a) or np.isnan(max_b) or np.isnan(max_both):
             continue
         correct_max = max(max_a, max_b)
-        correct_q3 = max(q3_a, q3_b)
-        if abs(max_both - correct_max) > 1e-10 or abs(q3_both - correct_q3) > 1e-10:
+        if abs(max_both - correct_max) > 1e-10:
             inconsistencies += 1
             print(f"INCONSISTÊNCIA DETECTADA no registro {idx}:")
-            print(f"  max_a = {max_a:.6f}, max_b = {max_b:.6f}, max_both = {max_both:.6f}, correto = {correct_max:.6f}")
-            print(f"  q3_a = {q3_a:.6f}, q3_b = {q3_b:.6f}, q3_both = {q3_both:.6f}, correto = {correct_q3:.6f}")
+            print(f"  max_a = {max_a:.6f}, max_b = {max_b:.6f}")
+            print(f"  max_both armazenado = {max_both:.6f}")
+            print(f"  max_both correto = {correct_max:.6f}")
     if inconsistencies > 0:
         print(f"\nTotal de inconsistências encontradas: {inconsistências} de {len(selection)} registros")
     else:
         print("\nVerificação de estatísticas combinadas: Todos os valores corretos!")
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Calculate metrics between datasets with Q3')
+    parser = argparse.ArgumentParser(description='Calculate metrics between datasets with dual Q3 pixel filtering')
     parser.add_argument('--metric', type=str, 
                         choices=['pearson', 'rmse', 'residual', 'max_residual', 'min_residual', 
                                  'r2', 'mse', 'mae', 'cosine', 'huber', 'ssim'], 
@@ -269,39 +282,16 @@ if __name__ == '__main__':
     
     base_datasets = {
         'embrace': [
-            'mapas1_embrace_2022_2024_0800',
-            'mapas1_embrace_2022_2024_1600',
-            'mapas1_embrace_2022_2024_2000_2200_0000_0200_0400',
             'mapas3_embrace_2024_0800_30m',
             'mapas3_embrace_2024_1600_30m',
             'mapas3_embrace_2024_2000_0400_30m'
         ],
-        'igs': [
-            'mapas1_igs_2022_2024_0800',
-            'mapas1_igs_2022_2024_1600',
-            'mapas1_igs_2022_2024_2000_2200_0000_0200_0400',
-            'mapas2_igs_2022_2024_0800',
-            'mapas2_igs_2022_2024_1600',
-            'mapas2_igs_2022_2024_2000_2200_0000_0200_0400'
-        ],
         'maggia': [
-            'mapas1_maggia_2022_2024_0800',
-            'mapas1_maggia_2022_2024_1600',
-            'mapas1_maggia_2022_2024_2000_2200_0000_0200_0400',
-            'mapas2_maggia_2022_2024_0800',
-            'mapas2_maggia_2024_1600_30m',
-            'mapas2_maggia_2022_2024_2000_2200_0000_0200_0400',
             'mapas3_maggia_2024_0800_30m',
             'mapas3_maggia_2024_1600_30m',
             'mapas3_maggia_2024_2000_0400_30m'
         ],
         'nagoya': [
-            'mapas1_nagoya_2022_2024_0800',
-            'mapas1_nagoya_2022_2024_1600',
-            'mapas1_nagoya_2022_2024_2000_2200_0000_0200_0400',
-            'mapas2_nagoya_2022_2024_0800',
-            'mapas2_nagoya_2022_2024_1600',
-            'mapas2_nagoya_2022_2024_2000_2200_0000_0200_0400',
             'mapas3_nagoya_2024_0800_30m',
             'mapas3_nagoya_2024_1600_30m',
             'mapas3_nagoya_2024_2000_0400_30m'
@@ -313,15 +303,16 @@ if __name__ == '__main__':
                 for source, dataset_list in base_datasets.items()}
     
     comparisons = [
-        ['embrace', 'igs'], ['embrace', 'maggia'], ['embrace', 'nagoya'],
-        ['igs', 'maggia'], ['igs', 'nagoya'], ['maggia', 'nagoya']
+        ['embrace', 'maggia'],
+        ['embrace', 'nagoya'],
+        ['maggia', 'nagoya']
     ]
     
     base_dir = Path('.').resolve() / 'output'
     if not base_dir.exists():
         base_dir = Path('.').resolve()
     
-    print(f"Calculating {metric_type.upper()} metrics with Q3...")
+    print(f"Calculating {metric_type.upper()} metrics with dual Q3 pixel filtering...")
     print(f"Using dataset suffix: '{dataset_suffix}'")
     print(f"Higher values are better: {'YES' if higher_is_better else 'NO'}")
     
@@ -386,41 +377,84 @@ if __name__ == '__main__':
                     map_a_flat = map_a.flatten()
                     map_b_flat = map_b.flatten()
                     
-                    processed_files += 1
-                    stats = calculate_stats(map_a, map_b)
+                    # Calculate Q3 for map_a and map_b
+                    valid_a = map_a_flat[~np.isnan(map_a_flat)]
+                    valid_b = map_b_flat[~np.isnan(map_b_flat)]
+                    if len(valid_a) == 0 or len(valid_b) == 0:
+                        print(f"WARNING: No valid data in {file_a} or {file_b}")
+                        continue
+                    q3_a = np.percentile(valid_a, 75)
+                    q3_b = np.percentile(valid_b, 75)
+                    q3_a_mask = map_a_flat >= q3_a
+                    q3_b_mask = map_b_flat >= q3_b
                     
+                    processed_files += 1
+                    stats = calculate_strict_stats(map_a, map_b)
+                    
+                    # Calculate metric with Q3_a filter
                     if metric_type == 'pearson':
-                        metric_value = calculate_pearson(map_a_flat, map_b_flat)
+                        metric_q3_a = calculate_pearson(map_a_flat, map_b_flat, q3_a_mask)
                     elif metric_type == 'r2':
-                        metric_value = calculate_r2_score(map_a_flat, map_b_flat)
+                        metric_q3_a = calculate_r2_score(map_a_flat, map_b_flat, q3_a_mask)
                     elif metric_type == 'rmse':
-                        metric_value = calculate_rmse(map_a_flat, map_b_flat)
+                        metric_q3_a = calculate_rmse(map_a_flat, map_b_flat, q3_a_mask)
                     elif metric_type == 'mse':
-                        metric_value = calculate_mse(map_a_flat, map_b_flat)
+                        metric_q3_a = calculate_mse(map_a_flat, map_b_flat, q3_a_mask)
                     elif metric_type == 'mae':
-                        metric_value = calculate_mae(map_a_flat, map_b_flat)
+                        metric_q3_a = calculate_mae(map_a_flat, map_b_flat, q3_a_mask)
                     elif metric_type == 'residual':
-                        metric_value = calculate_residual_error(map_a_flat, map_b_flat)
-                        if not np.isnan(metric_value) and metric_value < 0:
-                            print(f"ERROR: Negative residual computed for {file_a}: {metric_value}")
+                        metric_q3_a = calculate_residual_error(map_a_flat, map_b_flat, q3_a_mask)
+                        if not np.isnan(metric_q3_a) and metric_q3_a < 0:
+                            print(f"ERROR: Negative residual (Q3_a) computed for {file_a}: {metric_q3_a}")
                     elif metric_type == 'max_residual':
-                        metric_value = calculate_max_residual_error(map_a_flat, map_b_flat)
+                        metric_q3_a = calculate_max_residual_error(map_a_flat, map_b_flat, q3_a_mask)
                     elif metric_type == 'min_residual':
-                        metric_value = calculate_min_residual_error(map_a_flat, map_b_flat, min_residual_percentile)
+                        metric_q3_a = calculate_min_residual_error(map_a_flat, map_b_flat, min_residual_percentile, q3_a_mask)
                     elif metric_type == 'cosine':
-                        metric_value = calculate_cosine_similarity(map_a_flat, map_b_flat)
+                        metric_q3_a = calculate_cosine_similarity(map_a_flat, map_b_flat, q3_a_mask)
                     elif metric_type == 'huber':
-                        metric_value = calculate_huber_loss(map_a_flat, map_b_flat, huber_delta)
+                        metric_q3_a = calculate_huber_loss(map_a_flat, map_b_flat, huber_delta, q3_a_mask)
                     elif metric_type == 'ssim':
-                        metric_value = calculate_ssim(map_a, map_b)
+                        metric_q3_a = calculate_ssim(map_a, map_b, q3_a_mask)
+                    
+                    # Calculate metric with Q3_b filter
+                    if metric_type == 'pearson':
+                        metric_q3_b = calculate_pearson(map_a_flat, map_b_flat, q3_b_mask)
+                    elif metric_type == 'r2':
+                        metric_q3_b = calculate_r2_score(map_a_flat, map_b_flat, q3_b_mask)
+                    elif metric_type == 'rmse':
+                        metric_q3_b = calculate_rmse(map_a_flat, map_b_flat, q3_b_mask)
+                    elif metric_type == 'mse':
+                        metric_q3_b = calculate_mse(map_a_flat, map_b_flat, q3_b_mask)
+                    elif metric_type == 'mae':
+                        metric_q3_b = calculate_mae(map_a_flat, map_b_flat, q3_b_mask)
+                    elif metric_type == 'residual':
+                        metric_q3_b = calculate_residual_error(map_a_flat, map_b_flat, q3_b_mask)
+                        if not np.isnan(metric_q3_b) and metric_q3_b < 0:
+                            print(f"ERROR: Negative residual (Q3_b) computed for {file_a}: {metric_q3_b}")
+                    elif metric_type == 'max_residual':
+                        metric_q3_b = calculate_max_residual_error(map_a_flat, map_b_flat, q3_b_mask)
+                    elif metric_type == 'min_residual':
+                        metric_q3_b = calculate_min_residual_error(map_a_flat, map_b_flat, min_residual_percentile, q3_b_mask)
+                    elif metric_type == 'cosine':
+                        metric_q3_b = calculate_cosine_similarity(map_a_flat, map_b_flat, q3_b_mask)
+                    elif metric_type == 'huber':
+                        metric_q3_b = calculate_huber_loss(map_a_flat, map_b_flat, huber_delta, q3_b_mask)
+                    elif metric_type == 'ssim':
+                        metric_q3_b = calculate_ssim(map_a, map_b, q3_b_mask)
+                    
+                    # Calculate percentage values
+                    metric_q3_a_p = metric_q3_a * 100 if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] and not np.isnan(metric_q3_a) else \
+                                    (metric_q3_a / stats['data_range'] * 100 if metric_type in ['rmse', 'residual'] and stats['data_range'] != 0 and not np.isnan(metric_q3_a) else metric_q3_a)
+                    metric_q3_b_p = metric_q3_b * 100 if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] and not np.isnan(metric_q3_b) else \
+                                    (metric_q3_b / stats['data_range'] * 100 if metric_type in ['rmse', 'residual'] and stats['data_range'] != 0 and not np.isnan(metric_q3_b) else metric_q3_b)
                     
                     if verify_stats and not np.isnan(stats['min_both']) and not np.isnan(stats['max_both']):
                         both_maps = np.concatenate([map_a_flat[~np.isnan(map_a_flat)], map_b_flat[~np.isnan(map_b_flat)]])
                         trad_min = np.min(both_maps) if len(both_maps) > 0 else np.nan
                         trad_max = np.max(both_maps) if len(both_maps) > 0 else np.nan
-                        trad_q3 = np.percentile(both_maps, 75) if len(both_maps) > 0 else np.nan
-                        if not np.isnan(trad_min) and not np.isnan(trad_max) and not np.isnan(trad_q3):
-                            if abs(stats['min_both'] - trad_min) > 1e-10 or abs(stats['max_both'] - trad_max) > 1e-10 or abs(stats['q3_both'] - trad_q3) > 1e-10:
+                        if not np.isnan(trad_min) and not np.isnan(trad_max):
+                            if abs(stats['min_both'] - trad_min) > 1e-10 or abs(stats['max_both'] - trad_max) > 1e-10:
                                 print(f"INCONSISTENCY DETECTED in file {file_a.name}")
                     
                     try:
@@ -428,14 +462,6 @@ if __name__ == '__main__':
                     except:
                         epoch = np.datetime64('1970-01-01T00:00:00')
                         print(f"Warning: Could not parse datetime from filename {file_a.name}")
-                    
-                    value_p = metric_value * 100 if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] and not np.isnan(metric_value) else \
-                              (metric_value / stats['data_range'] * 100 if metric_type in ['rmse', 'residual'] and stats['data_range'] != 0 and not np.isnan(metric_value) else metric_value)
-                    
-                    # Calculate Q3 for the metric
-                    metric_q3_a = np.percentile(map_a_flat[~np.isnan(map_a_flat)], 75) if len(map_a_flat[~np.isnan(map_a_flat)]) > 0 else np.nan
-                    metric_q3_b = np.percentile(map_b_flat[~np.isnan(map_b_flat)], 75) if len(map_b_flat[~np.isnan(map_b_flat)]) > 0 else np.nan
-                    metric_q3_p = (metric_q3_a / stats['data_range'] * 100) if not np.isnan(metric_q3_a) and stats['data_range'] != 0 else np.nan
                     
                     result_data = {
                         'datetime': epoch,
@@ -446,11 +472,10 @@ if __name__ == '__main__':
                         'source_b': comparison[1],
                         'filename_a': file_a.name,
                         'filename_b': file_b.name if metric_type == 'ssim' else file_a.name,
-                        metric_type: metric_value,
-                        f'{metric_type}_p': value_p,
                         f'{metric_type}_q3_a': metric_q3_a,
+                        f'{metric_type}_q3_a_p': metric_q3_a_p,
                         f'{metric_type}_q3_b': metric_q3_b,
-                        f'{metric_type}_q3_p': metric_q3_p,
+                        f'{metric_type}_q3_b_p': metric_q3_b_p,
                         **stats
                     }
                     result.append(result_data)
@@ -466,7 +491,7 @@ if __name__ == '__main__':
     print(f"\nProcessed {processed_files} file pairs successfully.")
     
     df = pd.DataFrame(result)
-    df.to_csv(f'result_{metric_type}_with_stats_and_q3.csv', index=False)
+    df.to_csv(f'result_{metric_type}_with_stats_dual_q3_filtered.csv', index=False)
     if 'datetime' in df.columns:
         df['datetime'] = pd.to_datetime(df['datetime'])
         df.sort_values('datetime', inplace=True)
@@ -495,7 +520,8 @@ if __name__ == '__main__':
             
             verify_combined_stats(selection)
             
-            metric_values = selection[metric_type].values
+            # Use average of q3_a and q3_b metrics for analysis
+            metric_values = (selection[f'{metric_type}_q3_a'].values + selection[f'{metric_type}_q3_b'].values) / 2
             valid_metrics = metric_values[~np.isnan(metric_values)]
             
             if metric_type == 'residual' and any(v < 0 for v in valid_metrics):
@@ -525,82 +551,80 @@ if __name__ == '__main__':
             mean_max_a = selection['max_a'].mean()
             mean_mean_a = selection['mean_a'].mean()
             mean_median_a = selection['median_a'].mean()
-            mean_q1_a = selection['q1_a'].mean()
-            mean_q3_a = selection['q3_a'].mean()
             
             mean_min_b = selection['min_b'].mean()
             mean_max_b = selection['max_b'].mean()
             mean_mean_b = selection['mean_b'].mean()
             mean_median_b = selection['median_b'].mean()
-            mean_q1_b = selection['q1_b'].mean()
-            mean_q3_b = selection['q3_b'].mean()
             
             mean_min_both = min(mean_min_a, mean_min_b) if not np.isnan(mean_min_a) and not np.isnan(mean_min_b) else np.nan
             mean_max_both = max(mean_max_a, mean_max_b) if not np.isnan(mean_max_a) and not np.isnan(mean_max_b) else np.nan
             mean_mean_both = selection['mean_both'].mean()
             mean_median_both = selection['median_both'].mean()
-            mean_q1_both = selection['q1_both'].mean()
-            mean_q3_both = selection['q3_both'].mean()
             mean_data_range = mean_max_both - mean_min_both if not np.isnan(mean_max_both) and not np.isnan(mean_min_both) else np.nan
             
             print("\nStatistics for All Data:")
             print("Dataset A:")
-            print(f"  Min: {mean_min_a:.4f}, Q1: {mean_q1_a:.4f}, Median: {mean_median_a:.4f}, Mean: {mean_mean_a:.4f}, Q3: {mean_q3_a:.4f}, Max: {mean_max_a:.4f}")
+            print(f"  Min: {mean_min_a:.4f}, Median: {mean_median_a:.4f}, Mean: {mean_mean_a:.4f}, Max: {mean_max_a:.4f}")
             print("Dataset B:")
-            print(f"  Min: {mean_min_b:.4f}, Q1: {mean_q1_b:.4f}, Median: {mean_median_b:.4f}, Mean: {mean_mean_b:.4f}, Q3: {mean_q3_b:.4f}, Max: {mean_max_b:.4f}")
+            print(f"  Min: {mean_min_b:.4f}, Median: {mean_median_b:.4f}, Mean: {mean_mean_b:.4f}, Max: {mean_max_b:.4f}")
             print("Combined:")
-            print(f"  Min: {mean_min_both:.4f}, Q1: {mean_q1_both:.4f}, Median: {mean_median_both:.4f}, Mean: {mean_mean_both:.4f}, Q3: {mean_q3_both:.4f}, Max: {mean_max_both:.4f}")
+            print(f"  Min: {mean_min_both:.4f}, Median: {mean_median_both:.4f}, Mean: {mean_mean_both:.4f}, Max: {mean_max_both:.4f}")
             print(f"Data Range: {mean_data_range:.4f}")
             
             if metric_type == 'pearson':
-                print(f'Average Pearson Correlation: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%") (Fisher Z applied)')
+                print(f'Average Pearson Correlation (Q3 Filtered Avg): {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%") (Fisher Z applied)')
             elif metric_type == 'r2':
-                print(f'Average R² Score: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%") (Fisher Z applied)')
+                print(f'Average R² Score (Q3 Filtered Avg): {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%") (Fisher Z applied)')
             elif metric_type == 'ssim':
-                print(f'Average Structural Similarity Index: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%")')
+                print(f'Average Structural Similarity Index (Q3 Filtered Avg): {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%")')
             elif metric_type == 'cosine':
-                print(f'Average Cosine Similarity: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%")')
+                print(f'Average Cosine Similarity (Q3 Filtered Avg): {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%")')
             elif metric_type == 'rmse':
                 rmse_percent = (metric_value / mean_data_range * 100) if not np.isnan(metric_value) and mean_data_range != 0 else np.nan
-                print(f'Average RMSE: {metric_value:.4f} ({rmse_percent:.2f}% of data range if not np.isnan(rmse_percent) else "NaN%")')
+                print(f'Average RMSE (Q3 Filtered Avg): {metric_value:.4f} ({rmse_percent:.2f}% of data range if not np.isnan(rmse_percent) else "NaN%")')
             elif metric_type == 'mse':
-                print(f'Average Mean Squared Error: {metric_value:.4f}')
+                print(f'Average Mean Squared Error (Q3 Filtered Avg): {metric_value:.4f}')
             elif metric_type == 'mae':
-                print(f'Average Mean Absolute Error: {metric_value:.4f}')
+                print(f'Average Mean Absolute Error (Q3 Filtered Avg): {metric_value:.4f}')
             elif metric_type == 'residual':
                 residual_percent = (metric_value / mean_data_range * 100) if not np.isnan(metric_value) and mean_data_range != 0 else np.nan
-                print(f'Average Mean Absolute Residual Error: {metric_value:.4f} ({residual_percent:.2f}% of data range if not np.isnan(residual_percent) else "NaN%")')
+                print(f'Average Mean Absolute Residual Error (Q3 Filtered Avg): {metric_value:.4f} ({residual_percent:.2f}% of data range if not np.isnan(residual_percent) else "NaN%")')
             elif metric_type == 'max_residual':
-                print(f'Average Maximum Residual Error: {metric_value:.4f}')
+                print(f'Average Maximum Residual Error (Q3 Filtered Avg): {metric_value:.4f}')
             elif metric_type == 'min_residual':
-                print(f'Average Minimum Residual Error ({min_residual_percentile}th percentile): {metric_value:.4f}')
+                print(f'Average Minimum Residual Error ({min_residual_percentile}th percentile, Q3 Filtered Avg): {metric_value:.4f}')
             elif metric_type == 'huber':
-                print(f'Average Huber Loss (delta={huber_delta}): {metric_value:.4f}')
+                print(f'Average Huber Loss (delta={huber_delta}, Q3 Filtered Avg): {metric_value:.4f}')
             
-            sorted_maps = selection.sort_values(by=metric_type, ascending=not higher_is_better).head(top_n)
+            # Sort by average of q3_a and q3_b metrics
+            selection['metric_avg'] = (selection[f'{metric_type}_q3_a'] + selection[f'{metric_type}_q3_b']) / 2
+            sorted_maps = selection.sort_values(by='metric_avg', ascending=not higher_is_better).head(top_n)
             comp_key = f"{dataset_a} x {dataset_b}"
             top_maps_by_comparison[comp_key] = sorted_maps
             
-            print(f"\nTop {top_n} Maps with Best {metric_type.upper()} Values:")
+            print(f"\nTop {top_n} Maps with Best {metric_type.upper()} Values (Dual Q3 Filtered):")
             print("-" * 120)
             for idx, row in enumerate(sorted_maps.itertuples(), 1):
                 file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
-                metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% if not np.isnan(getattr(row, f'{metric_type}_p')) else 'NaN%')" \
-                                if metric_type in ['pearson', 'r2', 'cosine', 'ssim', 'rmse', 'residual'] else f"{getattr(row, metric_type):.4f}"
+                metric_q3_a_display = f"{getattr(row, f'{metric_type}_q3_a'):.4f} ({getattr(row, f'{metric_type}_q3_a_p'):.2f}% if not np.isnan(getattr(row, f'{metric_type}_q3_a_p')) else 'NaN%')" \
+                                     if metric_type in ['pearson', 'r2', 'cosine', 'ssim', 'rmse', 'residual'] else f"{getattr(row, f'{metric_type}_q3_a'):.4f}"
+                metric_q3_b_display = f"{getattr(row, f'{metric_type}_q3_b'):.4f} ({getattr(row, f'{metric_type}_q3_b_p'):.2f}% if not np.isnan(getattr(row, f'{metric_type}_q3_b_p')) else 'NaN%')" \
+                                     if metric_type in ['pearson', 'r2', 'cosine', 'ssim', 'rmse', 'residual'] else f"{getattr(row, f'{metric_type}_q3_b'):.4f}"
                 
                 date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
                 
                 print(f"{idx}. Data: {date_str}")
                 print(f"   Comparação: {row.dataset_a} x {row.dataset_b}")
                 print(f"   Arquivos: {file_info}")
-                print(f"   {metric_type.upper()}: {metric_display}")
-                print(f"   Q3 {metric_type.upper()}: {getattr(row, f'{metric_type}_q3_a'):.4f} (A), {getattr(row, f'{metric_type}_q3_b'):.4f} (B)")
+                print(f"   {metric_type.upper()} (Q3_A Filter): {metric_q3_a_display}")
+                print(f"   {metric_type.upper()} (Q3_B Filter): {metric_q3_b_display}")
                 print(f"   Estatísticas do Dataset A:")
-                print(f"     Min: {row.min_a:.4f}, Q1: {row.q1_a:.4f}, Median: {row.median_a:.4f}, Mean: {row.mean_a:.4f}, Q3: {row.q3_a:.4f}, Max: {row.max_a:.4f}")
+                print(f"     Min: {row.min_a:.4f}, Median: {row.median_a:.4f}, Mean: {row.mean_a:.4f}, Max: {row.max_a:.4f}")
                 print(f"   Estatísticas do Dataset B:")
-                print(f"     Min: {row.min_b:.4f}, Q1: {row.q1_b:.4f}, Median: {row.median_b:.4f}, Mean: {row.mean_b:.4f}, Q3: {row.q3_b:.4f}, Max: {row.max_b:.4f}")
+                print(f"     Min: {row.min_b:.4f}, Median: {row.min_b:.4f}, Mean: {row.mean_b:.4f}, Max: {row.max_b:.4f}")
                 print(f"   Estatísticas Combinadas:")
-                print(f"     Min: {row.min_both:.4f}, Q1: {row.q1_both:.4f}, Median: {row.median_both:.4f}, Mean: {row.mean_both:.4f}, Q3: {row.q3_both:.4f}, Max: {row.max_both:.4f}")
+                print(f"     Min: {row.min_both:.4f}, Median: {row.median_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
                 print(f"     Data Range: {row.data_range:.4f}")
                 if idx < len(sorted_maps):
                     print("-" * 80)
@@ -613,11 +637,11 @@ if __name__ == '__main__':
                                                  (selection['datetime'].dt.year == year)]
                         if not month_data.empty:
                             month_name = pd.Timestamp(year=year, month=month, day=1).strftime('%B/%Y')
-                            month_metric = np.nanmean(np.abs(month_data[metric_type])) if metric_type == 'residual' else np.nanmean(month_data[metric_type])
+                            month_metric = np.nanmean(np.abs(month_data['metric_avg'])) if metric_type == 'residual' else np.nanmean(month_data['metric_avg'])
                             if metric_type in ['pearson', 'r2', 'cosine', 'ssim', 'rmse', 'residual']:
-                                print(f'{month_name}: {metric_type.upper()} = {month_metric:.4f} ({month_metric * 100:.2f}% if not np.isnan(month_metric) else "NaN%")')
+                                print(f'{month_name}: {metric_type.upper()} (Q3 Filtered Avg) = {month_metric:.4f} ({month_metric * 100:.2f}% if not np.isnan(month_metric) else "NaN%")')
                             else:
-                                print(f'{month_name}: {metric_type.upper()} = {month_metric:.4f}')
+                                print(f'{month_name}: {metric_type.upper()} (Q3 Filtered Avg) = {month_metric:.4f}')
     
     dataset_avg_metrics = {}
     
@@ -658,39 +682,42 @@ if __name__ == '__main__':
         'huber': f'HUBER LOSS (delta={huber_delta})'
     }.get(metric_type, metric_type.upper())
     
-    print(f"\n===== DATASET {metric_name} ANALYSIS =====")
+    print(f"\n===== DATASET {metric_name} ANALYSIS (Dual Q3 Filtered) =====")
     print(f"Best dataset: {best_dataset[0]} with average {metric_type} of {best_dataset[1]:.4f}" + 
           (f" ({best_dataset[1] * 100:.2f}% if not np.isnan(best_dataset[1]) else 'NaN%')" if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] else ""))
     print(f"Worst dataset: {worst_dataset[0]} with average {metric_type} of {worst_dataset[1]:.4f}" + 
           (f" ({worst_dataset[1] * 100:.2f}% if not np.isnan(worst_dataset[1]) else 'NaN%')" if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] else ""))
     
-    print("\nDataset Ranking (from best to worst):")
+    print("\nDataset Ranking (from best to worst, Q3 Filtered Avg):")
     sorted_datasets = sorted(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'), reverse=higher_is_better)
     for i, (dataset, avg_val) in enumerate(sorted_datasets, 1):
         print(f"{i}. {dataset}: {avg_val:.4f}" + 
               (f" ({avg_val * 100:.2f}% if not np.isnan(avg_val) else 'NaN%')" if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] else ""))
     
-    print(f"\n===== TOP {top_n} MAPS OVERALL =====")
-    top_overall = df.sort_values(by=metric_type, ascending=not higher_is_better).head(top_n)
+    print(f"\n===== TOP {top_n} MAPS OVERALL (Dual Q3 Filtered) =====")
+    df['metric_avg'] = (df[f'{metric_type}_q3_a'] + df[f'{metric_type}_q3_b']) / 2
+    top_overall = df.sort_values(by='metric_avg', ascending=not higher_is_better).head(top_n)
     print("-" * 120)
     for idx, row in enumerate(top_overall.itertuples(), 1):
         file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
-        metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% if not np.isnan(getattr(row, f'{metric_type}_p')) else 'NaN%')" \
-                        if metric_type in ['pearson', 'r2', 'cosine', 'ssim', 'rmse', 'residual'] else f"{getattr(row, metric_type):.4f}"
+        metric_q3_a_display = f"{getattr(row, f'{metric_type}_q3_a'):.4f} ({getattr(row, f'{metric_type}_q3_a_p'):.2f}% if not np.isnan(getattr(row, f'{metric_type}_q3_a_p')) else 'NaN%')" \
+                             if metric_type in ['pearson', 'r2', 'cosine', 'ssim', 'rmse', 'residual'] else f"{getattr(row, f'{metric_type}_q3_a'):.4f}"
+        metric_q3_b_display = f"{getattr(row, f'{metric_type}_q3_b'):.4f} ({getattr(row, f'{metric_type}_q3_b_p'):.2f}% if not np.isnan(getattr(row, f'{metric_type}_q3_b_p')) else 'NaN%')" \
+                             if metric_type in ['pearson', 'r2', 'cosine', 'ssim', 'rmse', 'residual'] else f"{getattr(row, f'{metric_type}_q3_b'):.4f}"
         
         date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
         
         print(f"{idx}. Data: {date_str}")
         print(f"   Comparação: {row.dataset_a} x {row.dataset_b}")
         print(f"   Arquivos: {file_info}")
-        print(f"   {metric_type.upper()}: {metric_display}")
-        print(f"   Q3 {metric_type.upper()}: {getattr(row, f'{metric_type}_q3_a'):.4f} (A), {getattr(row, f'{metric_type}_q3_b'):.4f} (B)")
+        print(f"   {metric_type.upper()} (Q3_A Filter): {metric_q3_a_display}")
+        print(f"   {metric_type.upper()} (Q3_B Filter): {metric_q3_b_display}")
         print(f"   Estatísticas do Dataset A:")
-        print(f"     Min: {row.min_a:.4f}, Q1: {row.q1_a:.4f}, Median: {row.median_a:.4f}, Mean: {row.mean_a:.4f}, Q3: {row.q3_a:.4f}, Max: {row.max_a:.4f}")
+        print(f"     Min: {row.min_a:.4f}, Median: {row.median_a:.4f}, Mean: {row.mean_a:.4f}, Max: {row.max_a:.4f}")
         print(f"   Estatísticas do Dataset B:")
-        print(f"     Min: {row.min_b:.4f}, Q1: {row.q1_b:.4f}, Median: {row.median_b:.4f}, Mean: {row.mean_b:.4f}, Q3: {row.q3_b:.4f}, Max: {row.max_b:.4f}")
+        print(f"     Min: {row.min_b:.4f}, Median: {row.median_b:.4f}, Mean: {row.mean_b:.4f}, Max: {row.max_b:.4f}")
         print(f"   Estatísticas Combinadas:")
-        print(f"     Min: {row.min_both:.4f}, Q1: {row.q1_both:.4f}, Median: {row.median_both:.4f}, Mean: {row.mean_both:.4f}, Q3: {row.q3_both:.4f}, Max: {row.max_both:.4f}")
+        print(f"     Min: {row.min_both:.4f}, Median: {row.median_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
         print(f"     Data Range: {row.data_range:.4f}")
         if idx < len(top_overall):
             print("-" * 80)
@@ -705,13 +732,13 @@ if __name__ == '__main__':
     if overall_metrics[f'avg_{metric_type}_percent'].isna().all():
         overall_metrics = overall_metrics.drop(columns=[f'avg_{metric_type}_percent'])
     
-    overall_metrics.to_csv(f'dataset_ranking_{metric_type}.csv', index=False)
-    print(f"\nDataset ranking saved to 'dataset_ranking_{metric_type}.csv'")
+    overall_metrics.to_csv(f'dataset_ranking_{metric_type}_dual_q3_filtered.csv', index=False)
+    print(f"\nDataset ranking saved to 'dataset_ranking_{metric_type}_dual_q3_filtered.csv'")
     
     print("\n===== COMPUTATION SUMMARY =====")
-    print(f"Metric: {metric_name}")
+    print(f"Metric: {metric_name} (Dual Q3 Filtered)")
     print(f"Dataset type: {dataset_suffix}")
     print(f"Files processed: {processed_files}")
     print(f"Datasets compared: {len(dataset_avg_metrics)}")
-    print("Robust handling of NaN values in all metric calculations")
+    print("Robust handling of NaN values and dual Q3 pixel filtering in all metric calculations")
     print("Done!")
