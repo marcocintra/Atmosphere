@@ -481,7 +481,7 @@ if __name__ == '__main__':
                         epoch = np.datetime64('1970-01-01T00:00:00')
                     
                     value_p = metric_value * 100 if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] and not np.isnan(metric_value) else \
-                              (metric_value / stats['data_range'] * 100 if metric_type in ['rmse', 'residual'] and stats['data_range'] != 0 and not np.isnan(metric_value) else metric_value)
+                              (metric_value / stats['data_range'] * 100 if metric_type in ['rmse', 'residual'] and stats['data_range'] != 0 and not np.isnan(metric_value) else np.nan)
                     
                     result_data = {
                         'datetime': epoch,
@@ -505,7 +505,7 @@ if __name__ == '__main__':
                     skipped_files += 1
     
     if not result:
-        print("\nERROR: No valid data pairs found for analysis. Please check dataset directories and {file_extension} files.")
+        print(f"\nERROR: No valid data pairs found for analysis. Please check dataset directories and {file_extension} files.")
         exit(1)
     
     print(f"\nProcessed {processed_files} file pairs successfully, Skipped {skipped_files} files.")
@@ -620,12 +620,13 @@ if __name__ == '__main__':
             comp_key = f"{dataset_a} x {dataset_b}"
             top_maps_by_comparison[comp_key] = sorted_maps
             
-            print(f"\nTop {top_n} Maps with Best {metric_type.upper()} Values:")
+            print(f"\nTop {top_n} Maps with Best {metric_type.upper()} Values (Sorted by {'Percentage' if metric_type in ['rmse', 'residual'] else 'Value'}):")
             print("-" * 120)
             for idx, row in enumerate(sorted_maps.itertuples(), 1):
                 file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
-                metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% if not np.isnan(getattr(row, f'{metric_type}_p')) else 'NaN%')" \
-                                if metric_type in ['pearson', 'r2', 'cosine', 'ssim', 'rmse', 'residual'] else f"{getattr(row, metric_type):.4f}"
+                metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)" if metric_type in ['rmse', 'residual'] else \
+                                f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% if not np.isnan(getattr(row, f'{metric_type}_p')) else 'NaN%')" if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] else \
+                                f"{getattr(row, metric_type):.4f}"
                 
                 date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
                 
@@ -718,13 +719,14 @@ if __name__ == '__main__':
         print(f"{i}. {dataset}: {avg_val:.4f}" + 
               (f" ({avg_val * 100:.2f}% if not np.isnan(avg_val) else 'NaN%')" if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] else ""))
     
-    print(f"\n===== TOP {top_n} MAPS OVERALL =====")
+    print(f"\n===== TOP {top_n} MAPS OVERALL (Sorted by {'Percentage' if metric_type in ['rmse', 'residual'] else 'Value'}) =====")
     top_overall = df.sort_values(by=f'{metric_type}_p', ascending=not higher_is_better).head(top_n)
     print("-" * 120)
     for idx, row in enumerate(top_overall.itertuples(), 1):
         file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
-        metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% if not np.isnan(getattr(row, f'{metric_type}_p')) else 'NaN%')" \
-                        if metric_type in ['pearson', 'r2', 'cosine', 'ssim', 'rmse', 'residual'] else f"{getattr(row, metric_type):.4f}"
+        metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)" if metric_type in ['rmse', 'residual'] else \
+                        f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% if not np.isnan(getattr(row, f'{metric_type}_p')) else 'NaN%')" if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] else \
+                        f"{getattr(row, metric_type):.4f}"
         
         date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
         
