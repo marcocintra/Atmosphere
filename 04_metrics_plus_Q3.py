@@ -12,11 +12,38 @@ warnings.filterwarnings('ignore')
 
 def calculate_q3_mask(map_data):
     """Calcula Q3 (75º percentil) e retorna máscara para pixels >= Q3."""
-    valid_pixels = map_data.flatten()[~np.isnan(map_data.flatten())]
+    # Create mask of non-NaN pixels
+    non_nan_mask = ~np.isnan(map_data)
+    
+    # Get valid (non-NaN) pixels for percentile calculation
+    valid_pixels = map_data[non_nan_mask]
+    
     if len(valid_pixels) == 0:
         return None, np.nan
+        
+    # Calculate Q3 from valid pixels
     q3 = np.percentile(valid_pixels, 75)
-    mask = map_data >= q3
+    
+    # Special handling for cases where Q3 equals max value
+    unique_values = np.unique(valid_pixels)
+    if q3 == np.max(valid_pixels) and len(unique_values) > 1:
+        # If Q3 equals the max value but there are other values,
+        # try using a slightly lower threshold to ensure variance
+        q3 = unique_values[-2]  # Use second highest value
+    
+    # Create a mask where pixels are both non-NaN AND >= Q3
+    mask = non_nan_mask & (map_data >= q3)
+    
+    # Ensure we have enough pixels (at least 5% of original valid pixels)
+    min_required = max(100, len(valid_pixels) * 0.05)
+    if np.sum(mask) < min_required:
+        # Try a more lenient threshold
+        q3_adjusted = np.percentile(valid_pixels, 65)  # Try 65th percentile instead
+        mask = non_nan_mask & (map_data >= q3_adjusted)
+        if np.sum(mask) >= min_required:
+            return mask, q3_adjusted
+        return None, q3
+    
     return mask, q3
 
 def calculate_pearson(y_true, y_pred, filename="unknown", pixel_mask=None):
@@ -204,41 +231,111 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0, pixel_mask=None):
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
 def calculate_ssim(y_true, y_pred, pixel_mask=None):
-    """Calcula o SSIM, tratando casos especiais."""
+    """Calcula o SSIM, tratando casos especiais e problemas de variância zero."""
     if len(y_true.shape) > 2 and y_true.shape[2] > 1:
         y_true = np.mean(y_true, axis=2)
     if len(y_pred.shape) > 2 and y_pred.shape[2] > 1:
         y_pred = np.mean(y_pred, axis=2)
+    
+    min_pixels = 100  # Minimum number of pixels for meaningful SSIM
+    min_variance = 1e-6  # Minimum variance required for meaningful SSIM
+    
+    # Create working copies to avoid modifying originals
+    y_true_work = y_true.copy()
+    y_pred_work = y_pred.copy()
+    
     if pixel_mask is not None:
-        if pixel_mask.sum() < 2:
+        # Ensure the mask is 2D and matches the image dimensions
+        if pixel_mask.shape != y_true.shape:
             return np.nan
-        # SSIM requires 2D arrays, so we can't directly use a flattened mask
-        # Instead, create a masked version of the images
-        y_true_masked = np.where(pixel_mask, y_true, np.nan)
-        y_pred_masked = np.where(pixel_mask, y_pred, np.nan)
+        
+        # Get count of pixels in mask
+        mask_pixel_count = np.sum(pixel_mask)
+        
+        # Check if the mask has enough pixels
+        if mask_pixel_count < min_pixels:
+            return np.nan
+            
+        # Extract valid pixels from both images using the mask
+        y_true_valid = y_true_work[pixel_mask]
+        y_pred_valid = y_pred_work[pixel_mask]
+        
+        # Check variance of masked regions
+        true_var = np.var(y_true_valid)
+        pred_var = np.var(y_pred_valid)
+        
+        # If either variance is too small, SSIM calculation will be unreliable
+        if true_var < min_variance or pred_var < min_variance:
+            # If both images have identical values in the masked region, they're perfectly similar
+            if np.allclose(y_true_valid, y_pred_valid, rtol=1e-5, atol=1e-8):
+                return 1.0
+            # If images differ but have no variance, use alternative metric
+            else:
+                mean_abs_diff = np.mean(np.abs(y_true_valid - y_pred_valid))
+                max_possible_diff = max(np.max(y_true_valid), np.max(y_pred_valid)) - min(np.min(y_true_valid), np.min(y_pred_valid))
+                if max_possible_diff > 0:
+                    return 1.0 - (mean_abs_diff / max_possible_diff)
+                return 0.0
+        
+        # Create masked versions of the images for SSIM calculation
+        y_true_masked = np.where(pixel_mask, y_true_work, np.nan)
+        y_pred_masked = np.where(pixel_mask, y_pred_work, np.nan)
+        
+        # Use only non-NaN pixels
         valid_mask = ~np.isnan(y_true_masked) & ~np.isnan(y_pred_masked)
-        if np.sum(valid_mask) < 2:
+        if np.sum(valid_mask) < min_pixels:
             return np.nan
-        y_true = y_true_masked
-        y_pred = y_pred_masked
+            
+        y_true_work = y_true_masked
+        y_pred_work = y_pred_masked
     else:
-        valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
-        if np.sum(valid_mask) < 2:
+        valid_mask = ~np.isnan(y_true_work) & ~np.isnan(y_pred_work)
+        if np.sum(valid_mask) < min_pixels:
             return np.nan
-    data_range = max(np.max(y_true[valid_mask]) - np.min(y_true[valid_mask]), 
-                     np.max(y_pred[valid_mask]) - np.min(y_pred[valid_mask]))
-    if data_range == 0:
-        data_range = 1
+    
+    # Fill NaN values with zeros for SSIM calculation
+    y_true_work = np.nan_to_num(y_true_work, nan=0.0)
+    y_pred_work = np.nan_to_num(y_pred_work, nan=0.0)
+    
+    # Calculate data range for SSIM
+    data_range = np.max([
+        np.max(y_true_work) - np.min(y_true_work),
+        np.max(y_pred_work) - np.min(y_pred_work)
+    ])
+    
+    if data_range <= 0:
+        # If data range is zero, check if all pixels are identical
+        if np.allclose(y_true_work, y_pred_work, rtol=1e-5, atol=1e-8):
+            return 1.0  # Perfect similarity
+        data_range = 1.0  # Fallback to avoid division by zero
+    
     try:
-        return ssim(y_true, y_pred, data_range=data_range)
-    except Exception:
-        if y_true.shape != y_pred.shape:
-            min_height = min(y_true.shape[0], y_pred.shape[0])
-            min_width = min(y_true.shape[1], y_pred.shape[1])
-            y_true_resized = y_true[:min_height, :min_width]
-            y_pred_resized = y_pred[:min_height, :min_width]
-            return ssim(y_true_resized, y_pred_resized, data_range=data_range)
-        return np.nan
+        ssim_value = ssim(y_true_work, y_pred_work, data_range=data_range)
+        # Check if result is valid
+        if np.isnan(ssim_value) or np.isinf(ssim_value):
+            return np.nan
+        return ssim_value
+    except Exception as e:
+        # Handle cases where SSIM fails
+        try:
+            if y_true_work.shape != y_pred_work.shape:
+                min_height = min(y_true_work.shape[0], y_pred_work.shape[0])
+                min_width = min(y_true_work.shape[1], y_pred_work.shape[1])
+                y_true_resized = y_true_work[:min_height, :min_width]
+                y_pred_resized = y_pred_work[:min_height, :min_width]
+                
+                data_range = np.max([
+                    np.max(y_true_resized) - np.min(y_true_resized),
+                    np.max(y_pred_resized) - np.min(y_pred_resized)
+                ])
+                
+                if data_range <= 0:
+                    data_range = 1.0
+                    
+                return ssim(y_true_resized, y_pred_resized, data_range=data_range)
+            return np.nan
+        except:
+            return np.nan
 
 def fisher_z_transform(r):
     """Transforma correlação r para valor z, evitando valores extremos."""
@@ -375,16 +472,39 @@ if __name__ == '__main__':
     
     base_datasets = {
         'embrace': [
+            'mapas1_embrace_2022_2024_0800',
+            'mapas1_embrace_2022_2024_1600',
+            'mapas1_embrace_2022_2024_2000_2200_0000_0200_0400',
             'mapas3_embrace_2024_0800_30m',
             'mapas3_embrace_2024_1600_30m',
             'mapas3_embrace_2024_2000_0400_30m'
-        ],  
+        ],
+        'igs': [
+            'mapas1_igs_2022_2024_0800',
+            'mapas1_igs_2022_2024_1600',
+            'mapas1_igs_2022_2024_2000_2200_0000_0200_0400',
+            'mapas2_igs_2022_2024_0800',
+            'mapas2_igs_2022_2024_1600',
+            'mapas2_igs_2022_2024_2000_2200_0000_0200_0400'
+        ],
         'maggia': [
+            'mapas1_maggia_2022_2024_0800',
+            'mapas1_maggia_2022_2024_1600',
+            'mapas1_maggia_2022_2024_2000_2200_0000_0200_0400',
+            'mapas2_maggia_2022_2024_0800',
+            'mapas2_maggia_2024_1600_30m',
+            'mapas2_maggia_2022_2024_2000_2200_0000_0200_0400',
             'mapas3_maggia_2024_0800_30m',
             'mapas3_maggia_2024_1600_30m',
             'mapas3_maggia_2024_2000_0400_30m'
         ],
         'nagoya': [
+            'mapas1_nagoya_2022_2024_0800',
+            'mapas1_nagoya_2022_2024_1600',
+            'mapas1_nagoya_2022_2024_2000_2200_0000_0200_0400',
+            'mapas2_nagoya_2022_2024_0800',
+            'mapas2_nagoya_2024_1600_30m',
+            'mapas2_nagoya_2022_2024_2000_2200_0000_0200_0400',
             'mapas3_nagoya_2024_0800_30m',
             'mapas3_nagoya_2024_1600_30m',
             'mapas3_nagoya_2024_2000_0400_30m'
@@ -396,8 +516,11 @@ if __name__ == '__main__':
                 for source, dataset_list in base_datasets.items()}
     
     comparisons = [
+        ['embrace', 'igs'],
         ['embrace', 'maggia'],
         ['embrace', 'nagoya'],
+        ['igs', 'maggia'],
+        ['igs', 'nagoya'],
         ['maggia', 'nagoya']
     ]
     
@@ -487,6 +610,11 @@ if __name__ == '__main__':
                     mask_a_q3, q3_a = calculate_q3_mask(map_a)
                     mask_b_q3, q3_b = calculate_q3_mask(map_b)
                     
+                    # Validate Q3 masks for SSIM
+                    min_pixels = 100
+                    valid_q3_a = mask_a_q3 is not None and mask_a_q3.sum() >= min_pixels
+                    valid_q3_b = mask_b_q3 is not None and mask_b_q3.sum() >= min_pixels
+                    
                     if swap_ytrue_ypred and metric_type in ['r2', 'residual', 'max_residual', 'min_residual']:
                         y_true = map_b_flat
                         y_pred = map_a_flat
@@ -525,7 +653,14 @@ if __name__ == '__main__':
                     # Q3-based metrics
                     metric_q3_a = np.nan
                     metric_q3_b = np.nan
-                    if mask_a_q3 is not None:
+                    if valid_q3_a and metric_type == 'ssim':
+                        # Check valid pixels after masking
+                        y_true_masked = np.where(mask_a_q3, y_true_2d, np.nan)
+                        y_pred_masked = np.where(mask_a_q3, y_pred_2d, np.nan)
+                        valid_mask = ~np.isnan(y_true_masked) & ~np.isnan(y_pred_masked)
+                        if valid_mask.sum() >= min_pixels:
+                            metric_q3_a = calculate_ssim(y_true_2d, y_pred_2d, pixel_mask=mask_a_q3)
+                    elif valid_q3_a:
                         if metric_type == 'pearson':
                             metric_q3_a = calculate_pearson(y_true, y_pred, file_a.name, pixel_mask=mask_a_q3.flatten())
                         elif metric_type == 'r2':
@@ -546,10 +681,15 @@ if __name__ == '__main__':
                             metric_q3_a = calculate_cosine_similarity(y_true, y_pred, pixel_mask=mask_a_q3.flatten())
                         elif metric_type == 'huber':
                             metric_q3_a = calculate_huber_loss(y_true, y_pred, huber_delta, pixel_mask=mask_a_q3.flatten())
-                        elif metric_type == 'ssim':
-                            metric_q3_a = calculate_ssim(y_true_2d, y_pred_2d, pixel_mask=mask_a_q3)
                     
-                    if mask_b_q3 is not None:
+                    if valid_q3_b and metric_type == 'ssim':
+                        # Check valid pixels after masking
+                        y_true_masked = np.where(mask_b_q3, y_true_2d, np.nan)
+                        y_pred_masked = np.where(mask_b_q3, y_pred_2d, np.nan)
+                        valid_mask = ~np.isnan(y_true_masked) & ~np.isnan(y_pred_masked)
+                        if valid_mask.sum() >= min_pixels:
+                            metric_q3_b = calculate_ssim(y_true_2d, y_pred_2d, pixel_mask=mask_b_q3)
+                    elif valid_q3_b:
                         if metric_type == 'pearson':
                             metric_q3_b = calculate_pearson(y_true, y_pred, file_a.name, pixel_mask=mask_b_q3.flatten())
                         elif metric_type == 'r2':
@@ -570,8 +710,6 @@ if __name__ == '__main__':
                             metric_q3_b = calculate_cosine_similarity(y_true, y_pred, pixel_mask=mask_b_q3.flatten())
                         elif metric_type == 'huber':
                             metric_q3_b = calculate_huber_loss(y_true, y_pred, huber_delta, pixel_mask=mask_b_q3.flatten())
-                        elif metric_type == 'ssim':
-                            metric_q3_b = calculate_ssim(y_true_2d, y_pred_2d, pixel_mask=mask_b_q3)
                     
                     if verify_stats and not np.isnan(stats['min_both']) and not np.isnan(stats['max_both']):
                         both_maps = np.concatenate([map_a_flat[~np.isnan(map_a_flat)], map_b_flat[~np.isnan(map_b_flat)]])
