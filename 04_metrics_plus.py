@@ -581,7 +581,8 @@ if __name__ == '__main__':
             mean_mean_both = selection['mean_both'].mean()
             mean_median_both = selection['median_both'].mean()
             mean_data_range = mean_max_both - mean_min_both if not np.isnan(mean_max_both) and not np.isnan(mean_min_both) else np.nan
-            
+
+            # Exibindo estatísticas gerais
             print("\nStatistics for All Data:")
             print("Dataset A:")
             print(f"  Min: {mean_min_a:.4f}, Median: {mean_median_a:.4f}, Mean: {mean_mean_a:.4f}, Max: {mean_max_a:.4f}")
@@ -591,45 +592,88 @@ if __name__ == '__main__':
             print(f"  Min: {mean_min_both:.4f}, Median: {mean_median_both:.4f}, Mean: {mean_mean_both:.4f}, Max: {mean_max_both:.4f}")
             print(f"  Data Range: {mean_data_range:.4f}")
             
-            if metric_type == 'pearson':
-                print(f'Average Pearson Correlation: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%") (Fisher Z applied)')
-            elif metric_type == 'r2':
-                print(f'Average R² Score: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%") (Fisher Z applied on Pearson r)')
-            elif metric_type == 'ssim':
-                print(f'Average Structural Similarity Index: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%")')
-            elif metric_type == 'cosine':
-                print(f'Average Cosine Similarity: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%")')
-            elif metric_type == 'rmse':
-                rmse_percent = (metric_value / mean_data_range * 100) if not np.isnan(metric_value) and mean_data_range != 0 else np.nan
-                print(f'Average RMSE: {metric_value:.4f} ({rmse_percent:.2f}% of data range if not np.isnan(rmse_percent) else "NaN%")')
-            elif metric_type == 'mse':
-                print(f'Average Mean Squared Error: {metric_value:.4f}')
-            elif metric_type == 'mae':
-                print(f'Average Mean Absolute Error: {metric_value:.4f}')
-            elif metric_type == 'residual':
-                residual_percent = (metric_value / mean_data_range * 100) if not np.isnan(metric_value) and mean_data_range != 0 else np.nan
-                print(f'Average Mean Absolute Residual Error: {metric_value:.4f} ({residual_percent:.2f}% of data range if not np.isnan(residual_percent) else "NaN%")')
-            elif metric_type == 'max_residual':
-                print(f'Average Maximum Residual Error: {metric_value:.4f}')
-            elif metric_type == 'min_residual':
-                print(f'Average Minimum Residual Error ({min_residual_percentile}th percentile): {metric_value:.4f}')
-            elif metric_type == 'huber':
-                print(f'Average Huber Loss (delta={huber_delta}): {metric_value:.4f}')
+            # Calculando porcentagem padronizada para qualquer métrica
+            if metric_type in ['pearson', 'r2', 'ssim', 'cosine']:
+                # Estas métricas já são normalizadas (entre -1 e 1 ou 0 e 1)
+                metric_percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
+                percent_suffix = "%"
+            elif metric_type in ['rmse', 'mse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
+                # Métricas baseadas em erro, calcular como % da faixa de dados
+                metric_percent = (metric_value / mean_data_range * 100) if not np.isnan(metric_value) and mean_data_range != 0 else np.nan
+                percent_suffix = "% of data range"
+            else:
+                # Para outras métricas que possam ser adicionadas no futuro
+                metric_percent = np.nan
+                percent_suffix = "%"
             
+            # Formatação padronizada para todos os tipos de métricas
+            percent_display = f"({metric_percent:.2f}{percent_suffix})" if not np.isnan(metric_percent) else "(NaN%)"
+            
+            # Exibindo a métrica média com porcentagem
+            if metric_type == 'pearson':
+                print(f'Average Pearson Correlation: {metric_value:.4f} {percent_display} (Fisher Z applied)')
+            elif metric_type == 'r2':
+                print(f'Average R² Score: {metric_value:.4f} {percent_display} (Fisher Z applied on Pearson r)')
+            elif metric_type == 'ssim':
+                print(f'Average Structural Similarity Index: {metric_value:.4f} {percent_display}')
+            elif metric_type == 'cosine':
+                print(f'Average Cosine Similarity: {metric_value:.4f} {percent_display}')
+            elif metric_type == 'rmse':
+                print(f'Average RMSE: {metric_value:.4f} {percent_display}')
+            elif metric_type == 'mse':
+                print(f'Average Mean Squared Error: {metric_value:.4f} {percent_display}')
+            elif metric_type == 'mae':
+                print(f'Average Mean Absolute Error: {metric_value:.4f} {percent_display}')
+            elif metric_type == 'residual':
+                print(f'Average Mean Absolute Residual Error: {metric_value:.4f} {percent_display}')
+            elif metric_type == 'max_residual':
+                print(f'Average Maximum Residual Error: {metric_value:.4f} {percent_display}')
+            elif metric_type == 'min_residual':
+                print(f'Average Minimum Residual Error ({min_residual_percentile}th percentile): {metric_value:.4f} {percent_display}')
+            elif metric_type == 'huber':
+                print(f'Average Huber Loss (delta={huber_delta}): {metric_value:.4f} {percent_display}')
+            
+            # Ordenando e selecionando os melhores mapas
             sorted_maps = selection.sort_values(by=f'{metric_type}_p', ascending=not higher_is_better).head(top_n)
             comp_key = f"{dataset_a} x {dataset_b}"
             top_maps_by_comparison[comp_key] = sorted_maps
             
-            print(f"\nTop {top_n} Maps with Best {metric_type.upper()} Values (Sorted by {'Percentage' if metric_type in ['rmse', 'residual'] else 'Value'}):")
+            # Cabeçalho da exibição dos melhores mapas
+            print(f"\nTop {top_n} Maps with Best {metric_type.upper()} Values (Sorted by Percentage):")
             print("-" * 120)
+            
+            # Exibindo cada mapa com suas métricas
             for idx, row in enumerate(sorted_maps.itertuples(), 1):
+                # Determinando informações de arquivo
                 file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
-                metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)" if metric_type in ['rmse', 'residual'] else \
-                                f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% if not np.isnan(getattr(row, f'{metric_type}_p')) else 'NaN%')" if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] else \
-                                f"{getattr(row, metric_type):.4f}"
                 
+                # Construindo exibição da métrica com porcentagem
+                if hasattr(row, f'{metric_type}_p') and not np.isnan(getattr(row, f'{metric_type}_p')):
+                    # Se a métrica já tem um atributo de porcentagem calculado
+                    if metric_type in ['rmse', 'mse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
+                        metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)"
+                    else:
+                        metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
+                else:
+                    # Se precisamos calcular a porcentagem agora
+                    if metric_type in ['pearson', 'r2', 'ssim', 'cosine']:
+                        # Métricas normalizadas
+                        metric_value = getattr(row, metric_type)
+                        metric_percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
+                        metric_display = f"{metric_value:.4f} ({metric_percent:.2f}%)" if not np.isnan(metric_percent) else f"{metric_value:.4f} (NaN%)"
+                    elif metric_type in ['rmse', 'mse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
+                        # Métricas baseadas em erro
+                        metric_value = getattr(row, metric_type)
+                        metric_percent = (metric_value / row.data_range * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
+                        metric_display = f"{metric_value:.4f} ({metric_percent:.2f}% of data range)" if not np.isnan(metric_percent) else f"{metric_value:.4f} (NaN% of data range)"
+                    else:
+                        # Caso não seja possível calcular porcentagem
+                        metric_display = f"{getattr(row, metric_type):.4f} (Porcentagem não disponível)"
+                
+                # Formatando data
                 date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
                 
+                # Exibindo informações do mapa
                 print(f"{idx}. Data: {date_str}")
                 print(f"   Comparação: {row.dataset_a} x {row.dataset_b}")
                 print(f"   Arquivos: {file_info}")
@@ -641,8 +685,11 @@ if __name__ == '__main__':
                 print(f"   Estatísticas Combinadas:")
                 print(f"     Min: {row.min_both:.4f}, Median: {row.median_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
                 print(f"     Data Range: {row.data_range:.4f}")
+                
+                # Inserir separador entre mapas, exceto para o último
                 if idx < len(sorted_maps):
                     print("-" * 80)
+            
             print("-" * 120)
             
             if 'datetime' in selection.columns:
