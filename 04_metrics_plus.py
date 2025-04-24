@@ -269,7 +269,7 @@ if __name__ == '__main__':
                         help='Override the dataset suffix')
     parser.add_argument('--verify-stats', action='store_true',
                         help='Verify strict consistency of statistics')
-    parser.add_argument('--top-n', type=int, default=10,
+    parser.add_argument('--top-n', type=int, default=50,
                         help='Number of top maps to display')
     parser.add_argument('--check-existing', type=str, default=None,
                         help='Check an existing results CSV file')
@@ -303,42 +303,42 @@ if __name__ == '__main__':
     
     base_datasets = {
         'embrace': [
-            # 'mapas1_embrace_2022_2024_0800',
-            # 'mapas1_embrace_2022_2024_1600',
-            # 'mapas1_embrace_2022_2024_2000_2200_0000_0200_0400'
-            'mapas3_embrace_2024_0800_30m',
-            'mapas3_embrace_2024_1600_30m',
-            'mapas3_embrace_2024_2000_0400_30m'
+            'mapas1_embrace_2022_2024_0800',
+            'mapas1_embrace_2022_2024_1600',
+            'mapas1_embrace_2022_2024_2000_2200_0000_0200_0400'
+            # 'mapas3_embrace_2024_0800_30m',
+            # 'mapas3_embrace_2024_1600_30m',
+            # 'mapas3_embrace_2024_2000_0400_30m'
         ],
-        # 'igs': [
-        #     'mapas1_igs_2022_2024_0800',
-        #     'mapas1_igs_2022_2024_1600',
-        #     'mapas1_igs_2022_2024_2000_2200_0000_0200_0400',
-        #     'mapas2_igs_2022_2024_0800',
-        #     'mapas2_igs_2022_2024_1600',
-        #     'mapas2_igs_2022_2024_2000_2200_0000_0200_0400'
-        # ],
+        'igs': [
+            'mapas1_igs_2022_2024_0800',
+            'mapas1_igs_2022_2024_1600',
+            'mapas1_igs_2022_2024_2000_2200_0000_0200_0400',
+            'mapas2_igs_2022_2024_0800',
+            'mapas2_igs_2022_2024_1600',
+            'mapas2_igs_2022_2024_2000_2200_0000_0200_0400'
+        ],
         'maggia': [
-            # 'mapas1_maggia_2022_2024_0800',
-            # 'mapas1_maggia_2022_2024_1600',
-            # 'mapas1_maggia_2022_2024_2000_2200_0000_0200_0400',
-            # 'mapas2_maggia_2022_2024_0800',
-            # 'mapas2_maggia_2022_2024_1600',
-            # 'mapas2_maggia_2022_2024_2000_2200_0000_0200_0400'
-            'mapas3_maggia_2024_0800_30m',
-            'mapas3_maggia_2024_1600_30m',
-            'mapas3_maggia_2024_2000_0400_30m'
+            'mapas1_maggia_2022_2024_0800',
+            'mapas1_maggia_2022_2024_1600',
+            'mapas1_maggia_2022_2024_2000_2200_0000_0200_0400',
+            'mapas2_maggia_2022_2024_0800',
+            'mapas2_maggia_2022_2024_1600',
+            'mapas2_maggia_2022_2024_2000_2200_0000_0200_0400'
+            # 'mapas3_maggia_2024_0800_30m',
+            # 'mapas3_maggia_2024_1600_30m',
+            # 'mapas3_maggia_2024_2000_0400_30m'
         ],
         'nagoya': [
-            # 'mapas1_nagoya_2022_2024_0800',
-            # 'mapas1_nagoya_2022_2024_1600',
-            # 'mapas1_nagoya_2022_2024_2000_2200_0000_0200_0400',
-            # 'mapas2_nagoya_2022_2024_0800',
-            # 'mapas2_nagoya_2022_2024_1600',
-            # 'mapas2_nagoya_2022_2024_2000_2200_0000_0200_0400'
-            'mapas3_nagoya_2024_0800_30m',
-            'mapas3_nagoya_2024_1600_30m',
-            'mapas3_nagoya_2024_2000_0400_30m'
+            'mapas1_nagoya_2022_2024_0800',
+            'mapas1_nagoya_2022_2024_1600',
+            'mapas1_nagoya_2022_2024_2000_2200_0000_0200_0400',
+            'mapas2_nagoya_2022_2024_0800',
+            'mapas2_nagoya_2022_2024_1600',
+            'mapas2_nagoya_2022_2024_2000_2200_0000_0200_0400'
+            # 'mapas3_nagoya_2024_0800_30m',
+            # 'mapas3_nagoya_2024_1600_30m',
+            # 'mapas3_nagoya_2024_2000_0400_30m'
         ]
     }
     
@@ -347,11 +347,11 @@ if __name__ == '__main__':
                 for source, dataset_list in base_datasets.items()}
     
     comparisons = [
-        # ['embrace', 'igs'],
+        ['embrace', 'igs'],
         ['embrace', 'maggia'],
         ['embrace', 'nagoya'],
-        # ['igs', 'maggia'],
-        # ['igs', 'nagoya'],
+        ['igs', 'maggia'],
+        ['igs', 'nagoya'],
         ['maggia', 'nagoya']
     ]
     
@@ -806,78 +806,50 @@ if __name__ == '__main__':
         percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
         print(f"{i}. {dataset}: {avg_val:.4f} {percent_display}")
     
-    print(f"\n===== TOP {top_n} MAPS OVERALL (Sorted by Percentage) =====")
-    top_overall = df.sort_values(by=f'{metric_type}_p', ascending=not higher_is_better).head(top_n)
-    print("-" * 120)
+    # Forçar a exibição de 50 mapas para o TOP OVERALL, independente do valor de top_n
+overall_top_count = 50
+
+print(f"\n===== TOP {overall_top_count} MAPS OVERALL (Sorted by Percentage) =====")
+top_overall = df.sort_values(by=f'{metric_type}_p', ascending=not higher_is_better).head(overall_top_count)
+print("-" * 120)
+
+for idx, row in enumerate(top_overall.itertuples(), 1):
+    file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
     
-    for idx, row in enumerate(top_overall.itertuples(), 1):
-        file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
-        
-        # Exibição consistente de porcentagem para todas as métricas
-        if hasattr(row, f'{metric_type}_p') and not np.isnan(getattr(row, f'{metric_type}_p')):
-            # Se a métrica já tem um atributo de porcentagem calculado
-            if metric_type in ['rmse', 'mse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
-                metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)"
-            else:
-                metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
+    # Exibição consistente de porcentagem para todas as métricas
+    if hasattr(row, f'{metric_type}_p') and not np.isnan(getattr(row, f'{metric_type}_p')):
+        # Se a métrica já tem um atributo de porcentagem calculado
+        if metric_type in ['rmse', 'mse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
+            metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)"
         else:
-            # Se precisamos calcular a porcentagem agora
-            metric_value = getattr(row, metric_type)
-            if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
-                # Métricas normalizadas
-                percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
-                percent_suffix = "%"
-            else:
-                # Métricas baseadas em erro
-                percent = (metric_value / row.data_range * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
-                percent_suffix = "% of data range"
-            
-            metric_display = f"{metric_value:.4f} ({percent:.2f}{percent_suffix})" if not np.isnan(percent) else f"{metric_value:.4f} (NaN%)"
-        
-        date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
-        
-        print(f"{idx}. Data: {date_str}")
-        print(f"   Comparação: {row.dataset_a} x {row.dataset_b}")
-        print(f"   Arquivos: {file_info}")
-        print(f"   {metric_type.upper()}: {metric_display}")
-        print(f"   Estatísticas do Dataset A:")
-        print(f"     Min: {row.min_a:.4f}, Median: {row.median_a:.4f}, Mean: {row.mean_a:.4f}, Max: {row.max_a:.4f}")
-        print(f"   Estatísticas do Dataset B:")
-        print(f"     Min: {row.min_b:.4f}, Median: {row.median_b:.4f}, Mean: {row.mean_b:.4f}, Max: {row.max_b:.4f}")
-        print(f"   Estatísticas Combinadas:")
-        print(f"     Min: {row.min_both:.4f}, Median: {row.median_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
-        print(f"     Data Range: {row.data_range:.4f}")
-        if idx < len(top_overall):
-            print("-" * 80)
-    print("-" * 120)
-    
-    # Atualização para incluir porcentagens para todas as métricas no DataFrame final
-    overall_metrics = pd.DataFrame({
-        'dataset': list(dataset_avg_metrics.keys()),
-        f'avg_{metric_type}': list(dataset_avg_metrics.values())
-    })
-    
-    # Adicionando coluna de percentual para todas as métricas
-    percentages = []
-    for dataset, avg_val in dataset_avg_metrics.items():
+            metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
+    else:
+        # Se precisamos calcular a porcentagem agora
+        metric_value = getattr(row, metric_type)
         if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
-            percent = avg_val * 100 if not np.isnan(avg_val) else np.nan
+            # Métricas normalizadas
+            percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
+            percent_suffix = "%"
         else:
-            data_ranges = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['data_range'].values
-            avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
-            percent = (avg_val / avg_data_range * 100) if not np.isnan(avg_val) and avg_data_range != 0 else np.nan
-        percentages.append(percent)
+            # Métricas baseadas em erro
+            percent = (metric_value / row.data_range * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
+            percent_suffix = "% of data range"
+        
+        metric_display = f"{metric_value:.4f} ({percent:.2f}{percent_suffix})" if not np.isnan(percent) else f"{metric_value:.4f} (NaN%)"
     
-    overall_metrics[f'avg_{metric_type}_percent'] = percentages
+    date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
     
-    overall_metrics.to_csv(f'dataset_ranking_{metric_type}.csv', index=False)
-    print(f"\nDataset ranking saved to 'dataset_ranking_{metric_type}.csv'")
-    
-    print("\n===== COMPUTATION SUMMARY =====")
-    print(f"Metric: {metric_name}")
-    print(f"Dataset type: {dataset_suffix}")
-    print(f"Files processed: {processed_files}")
-    print(f"Files skipped: {skipped_files}")
-    print(f"Datasets compared: {len(dataset_avg_metrics)}")
-    print("Robust handling of NaN values in all metric calculations")
-    print("Done!")
+    print(f"{idx}. Data: {date_str}")
+    print(f"   Comparação: {row.dataset_a} x {row.dataset_b}")
+    print(f"   Arquivos: {file_info}")
+    print(f"   {metric_type.upper()}: {metric_display}")
+    print(f"   Estatísticas do Dataset A:")
+    print(f"     Min: {row.min_a:.4f}, Median: {row.median_a:.4f}, Mean: {row.mean_a:.4f}, Max: {row.max_a:.4f}")
+    print(f"   Estatísticas do Dataset B:")
+    print(f"     Min: {row.min_b:.4f}, Median: {row.median_b:.4f}, Mean: {row.mean_b:.4f}, Max: {row.max_b:.4f}")
+    print(f"   Estatísticas Combinadas:")
+    print(f"     Min: {row.min_both:.4f}, Median: {row.median_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
+    print(f"     Data Range: {row.data_range:.4f}")
+    if idx < len(top_overall):
+        print("-" * 80)
+print("-" * 120)
