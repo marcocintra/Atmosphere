@@ -837,7 +837,7 @@ if __name__ == '__main__':
             mean_mean_both = selection['mean_both'].mean()
             mean_median_both = selection['median_both'].mean()
             mean_data_range = mean_max_both - mean_min_both if not np.isnan(mean_max_both) and not np.isnan(mean_min_both) else np.nan
-            
+
             print("\nStatistics for All Data:")
             print("Dataset A:")
             print(f"  Min: {mean_min_a:.4f}, Median: {mean_median_a:.4f}, Mean: {mean_mean_a:.4f}, Max: {mean_max_a:.4f}")
@@ -847,70 +847,111 @@ if __name__ == '__main__':
             print(f"  Min: {mean_min_both:.4f}, Median: {mean_median_both:.4f}, Mean: {mean_mean_both:.4f}, Max: {mean_max_both:.4f}")
             print(f"  Data Range: {mean_data_range:.4f}")
             
+            # Função auxiliar para formatar porcentagens
+            def format_percentage(value, data_range=None, is_normalized=False):
+                if np.isnan(value):
+                    return "NaN%"
+                if is_normalized:  # Para métricas já normalizadas (pearson, r2, etc.)
+                    return f"{value * 100:.2f}%"
+                if data_range and data_range != 0:  # Para métricas de erro (rmse, mae, etc.)
+                    return f"{(value / data_range * 100):.2f}% of data range"
+                return "NaN%"  # Caso nenhuma condição seja satisfeita
+            
+            # Função para formatar a exibição da métrica com sua porcentagem
+            def format_metric_with_percent(value, data_range=None, is_normalized=False, suffix=""):
+                percent = format_percentage(value, data_range, is_normalized)
+                return f"{value:.4f} ({percent}){suffix}"
+            
             if metric_type == 'pearson':
-                print(f'Average Pearson Correlation: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%") (Fisher Z applied)')
-                print(f'Average Pearson (Q3 Map A): {metric_q3_a_avg:.4f} ({metric_q3_a_avg * 100:.2f}% if not np.isnan(metric_q3_a_avg) else "NaN%")')
-                print(f'Average Pearson (Q3 Map B): {metric_q3_b_avg:.4f} ({metric_q3_b_avg * 100:.2f}% if not np.isnan(metric_q3_b_avg) else "NaN%")')
+                print(f'Average Pearson Correlation: {format_metric_with_percent(metric_value, is_normalized=True, suffix=" (Fisher Z applied)")}')
+                print(f'Average Pearson (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
+                print(f'Average Pearson (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}')
             elif metric_type == 'r2':
-                print(f'Average R² Score: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%") (Fisher Z applied on Pearson r)')
-                print(f'Average R² (Q3 Map A): {metric_q3_a_avg:.4f} ({metric_q3_a_avg * 100:.2f}% if not np.isnan(metric_q3_a_avg) else "NaN%")')
-                print(f'Average R² (Q3 Map B): {metric_q3_b_avg:.4f} ({metric_q3_b_avg * 100:.2f}% if not np.isnan(metric_q3_b_avg) else "NaN%")')
+                print(f'Average R² Score: {format_metric_with_percent(metric_value, is_normalized=True, suffix=" (Fisher Z applied on Pearson r)")}')
+                print(f'Average R² (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
+                print(f'Average R² (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}')
             elif metric_type == 'ssim':
-                print(f'Average Structural Similarity Index: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%")')
-                print(f'Average SSIM (Q3 Map A): {metric_q3_a_avg:.4f} ({metric_q3_a_avg * 100:.2f}% if not np.isnan(metric_q3_a_avg) else "NaN%")')
-                print(f'Average SSIM (Q3 Map B): {metric_q3_b_avg:.4f} ({metric_q3_b_avg * 100:.2f}% if not np.isnan(metric_q3_b_avg) else "NaN%")')
+                print(f'Average Structural Similarity Index: {format_metric_with_percent(metric_value, is_normalized=True)}')
+                print(f'Average SSIM (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
+                print(f'Average SSIM (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}')
             elif metric_type == 'cosine':
-                print(f'Average Cosine Similarity: {metric_value:.4f} ({metric_value * 100:.2f}% if not np.isnan(metric_value) else "NaN%")')
-                print(f'Average Cosine (Q3 Map A): {metric_q3_a_avg:.4f} ({metric_q3_a_avg * 100:.2f}% if not np.isnan(metric_q3_a_avg) else "NaN%")')
-                print(f'Average Cosine (Q3 Map B): {metric_q3_b_avg:.4f} ({metric_q3_b_avg * 100:.2f}% if not np.isnan(metric_q3_b_avg) else "NaN%")')
+                print(f'Average Cosine Similarity: {format_metric_with_percent(metric_value, is_normalized=True)}')
+                print(f'Average Cosine (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
+                print(f'Average Cosine (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}')
             elif metric_type == 'rmse':
-                rmse_percent = (metric_value / mean_data_range * 100) if not np.isnan(metric_value) and mean_data_range != 0 else np.nan
-                rmse_q3_a_percent = (metric_q3_a_avg / mean_data_range * 100) if not np.isnan(metric_q3_a_avg) and mean_data_range != 0 else np.nan
-                rmse_q3_b_percent = (metric_q3_b_avg / mean_data_range * 100) if not np.isnan(metric_q3_b_avg) and mean_data_range != 0 else np.nan
-                print(f'Average RMSE: {metric_value:.4f} ({rmse_percent:.2f}% of data range if not np.isnan(rmse_percent) else "NaN%")')
-                print(f'Average RMSE (Q3 Map A): {metric_q3_a_avg:.4f} ({rmse_q3_a_percent:.2f}% of data range if not np.isnan(rmse_q3_a_percent) else "NaN%")')
-                print(f'Average RMSE (Q3 Map B): {metric_q3_b_avg:.4f} ({rmse_q3_b_percent:.2f}% of data range if not np.isnan(rmse_q3_b_percent) else "NaN%")')
+                print(f'Average RMSE: {format_metric_with_percent(metric_value, mean_data_range)}')
+                print(f'Average RMSE (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
+                print(f'Average RMSE (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'mse':
-                print(f'Average Mean Squared Error: {metric_value:.4f}')
-                print(f'Average MSE (Q3 Map A): {metric_q3_a_avg:.4f}')
-                print(f'Average MSE (Q3 Map B): {metric_q3_b_avg:.4f}')
+                print(f'Average Mean Squared Error: {format_metric_with_percent(metric_value, mean_data_range)}')
+                print(f'Average MSE (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
+                print(f'Average MSE (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'mae':
-                print(f'Average Mean Absolute Error: {metric_value:.4f}')
-                print(f'Average MAE (Q3 Map A): {metric_q3_a_avg:.4f}')
-                print(f'Average MAE (Q3 Map B): {metric_q3_b_avg:.4f}')
+                print(f'Average Mean Absolute Error: {format_metric_with_percent(metric_value, mean_data_range)}')
+                print(f'Average MAE (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
+                print(f'Average MAE (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'residual':
-                residual_percent = (metric_value / mean_data_range * 100) if not np.isnan(metric_value) and mean_data_range != 0 else np.nan
-                residual_q3_a_percent = (metric_q3_a_avg / mean_data_range * 100) if not np.isnan(metric_q3_a_avg) and mean_data_range != 0 else np.nan
-                residual_q3_b_percent = (metric_q3_b_avg / mean_data_range * 100) if not np.isnan(metric_q3_b_avg) and mean_data_range != 0 else np.nan
-                print(f'Average Mean Absolute Residual Error: {metric_value:.4f} ({residual_percent:.2f}% of data range if not np.isnan(residual_percent) else "NaN%")')
-                print(f'Average Residual (Q3 Map A): {metric_q3_a_avg:.4f} ({residual_q3_a_percent:.2f}% of data range if not np.isnan(residual_q3_a_percent) else "NaN%")')
-                print(f'Average Residual (Q3 Map B): {metric_q3_b_avg:.4f} ({residual_q3_b_percent:.2f}% of data range if not np.isnan(residual_q3_b_percent) else "NaN%")')
+                print(f'Average Mean Absolute Residual Error: {format_metric_with_percent(metric_value, mean_data_range)}')
+                print(f'Average Residual (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
+                print(f'Average Residual (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'max_residual':
-                print(f'Average Maximum Residual Error: {metric_value:.4f}')
-                print(f'Average Max Residual (Q3 Map A): {metric_q3_a_avg:.4f}')
-                print(f'Average Max Residual (Q3 Map B): {metric_q3_b_avg:.4f}')
+                print(f'Average Maximum Residual Error: {format_metric_with_percent(metric_value, mean_data_range)}')
+                print(f'Average Max Residual (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
+                print(f'Average Max Residual (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'min_residual':
-                print(f'Average Minimum Residual Error ({min_residual_percentile}th percentile): {metric_value:.4f}')
-                print(f'Average Min Residual (Q3 Map A): {metric_q3_a_avg:.4f}')
-                print(f'Average Min Residual (Q3 Map B): {metric_q3_b_avg:.4f}')
+                suffix = f" ({min_residual_percentile}th percentile)"
+                print(f'Average Minimum Residual Error{suffix}: {format_metric_with_percent(metric_value, mean_data_range)}')
+                print(f'Average Min Residual (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
+                print(f'Average Min Residual (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'huber':
-                print(f'Average Huber Loss (delta={huber_delta}): {metric_value:.4f}')
-                print(f'Average Huber Loss (Q3 Map A): {metric_q3_a_avg:.4f}')
-                print(f'Average Huber Loss (Q3 Map B): {metric_q3_b_avg:.4f}')
+                suffix = f" (delta={huber_delta})"
+                print(f'Average Huber Loss{suffix}: {format_metric_with_percent(metric_value, mean_data_range)}')
+                print(f'Average Huber Loss (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
+                print(f'Average Huber Loss (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             
             sorted_maps = selection.sort_values(by=f'{metric_type}_p', ascending=not higher_is_better).head(top_n)
             comp_key = f"{dataset_a} x {dataset_b}"
             top_maps_by_comparison[comp_key] = sorted_maps
             
-            print(f"\nTop {top_n} Maps with Best {metric_type.upper()} Values (Sorted by {'Percentage' if metric_type in ['rmse', 'residual'] else 'Value'}):")
+            # Agora todos são ordenados por percentual
+            print(f"\nTop {top_n} Maps with Best {metric_type.upper()} Values (Sorted by Percentage):")
             print("-" * 120)
             for idx, row in enumerate(sorted_maps.itertuples(), 1):
                 file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
-                metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)" if metric_type in ['rmse', 'residual'] else \
-                                f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% if not np.isnan(getattr(row, f'{metric_type}_p')) else 'NaN%')" if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] else \
-                                f"{getattr(row, metric_type):.4f}"
-                q3_a_display = f"{getattr(row, f'{metric_type}_q3_a'):.4f}" if not np.isnan(getattr(row, f'{metric_type}_q3_a')) else 'NaN'
-                q3_b_display = f"{getattr(row, f'{metric_type}_q3_b'):.4f}" if not np.isnan(getattr(row, f'{metric_type}_q3_b')) else 'NaN'
+                
+                # Verificar se é uma métrica normalizada
+                is_normalized = metric_type in ['pearson', 'r2', 'cosine', 'ssim']
+                
+                # Formatar a métrica principal com porcentagem
+                if hasattr(row, f'{metric_type}_p') and not np.isnan(getattr(row, f'{metric_type}_p')):
+                    if is_normalized:
+                        metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
+                    else:
+                        metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)"
+                else:
+                    # Se não tiver o atributo de porcentagem, calcular
+                    metric_value = getattr(row, metric_type)
+                    if is_normalized:
+                        percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
+                        metric_display = f"{metric_value:.4f} ({percent:.2f}%)" if not np.isnan(percent) else f"{metric_value:.4f} (NaN%)"
+                    else:
+                        percent = (metric_value / row.data_range * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
+                        metric_display = f"{metric_value:.4f} ({percent:.2f}% of data range)" if not np.isnan(percent) else f"{metric_value:.4f} (NaN% of data range)"
+                
+                # Formatar os valores Q3 com porcentagem
+                q3_a_value = getattr(row, f'{metric_type}_q3_a')
+                q3_b_value = getattr(row, f'{metric_type}_q3_b')
+                
+                if is_normalized:
+                    q3_a_percent = q3_a_value * 100 if not np.isnan(q3_a_value) else np.nan
+                    q3_b_percent = q3_b_value * 100 if not np.isnan(q3_b_value) else np.nan
+                    q3_a_display = f"{q3_a_value:.4f} ({q3_a_percent:.2f}%)" if not np.isnan(q3_a_value) else 'NaN'
+                    q3_b_display = f"{q3_b_value:.4f} ({q3_b_percent:.2f}%)" if not np.isnan(q3_b_value) else 'NaN'
+                else:
+                    q3_a_percent = (q3_a_value / row.data_range * 100) if not np.isnan(q3_a_value) and row.data_range != 0 else np.nan
+                    q3_b_percent = (q3_b_value / row.data_range * 100) if not np.isnan(q3_b_value) and row.data_range != 0 else np.nan
+                    q3_a_display = f"{q3_a_value:.4f} ({q3_a_percent:.2f}% of data range)" if not np.isnan(q3_a_value) else 'NaN'
+                    q3_b_display = f"{q3_b_value:.4f} ({q3_b_percent:.2f}% of data range)" if not np.isnan(q3_b_value) else 'NaN'
                 
                 date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
                 
