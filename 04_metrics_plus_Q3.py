@@ -1095,97 +1095,49 @@ if __name__ == '__main__':
         percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
         print(f"{i}. {dataset}: {avg_val:.4f} {percent_display}")
     
-    print(f"\n===== TOP {top_n} MAPS OVERALL (Sorted by Percentage) =====")
-    top_overall = df.sort_values(by=f'{metric_type}_p', ascending=not higher_is_better).head(top_n)
-    print("-" * 120)
+    overall_top_count = 50
+
+print(f"\n===== TOP {overall_top_count} MAPS OVERALL (Sorted by Percentage) =====")
+top_overall = df.sort_values(by=f'{metric_type}_p', ascending=not higher_is_better).head(overall_top_count)
+print("-" * 120)
+
+for idx, row in enumerate(top_overall.itertuples(), 1):
+    file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
     
-    for idx, row in enumerate(top_overall.itertuples(), 1):
-        file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
-        
-        # Exibição consistente de porcentagem para todas as métricas
-        if hasattr(row, f'{metric_type}_p') and not np.isnan(getattr(row, f'{metric_type}_p')):
-            # Se a métrica já tem um atributo de porcentagem calculado
-            if metric_type in ['rmse', 'mse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
-                metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)"
-            else:
-                metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
+    # Exibição consistente de porcentagem para todas as métricas
+    if hasattr(row, f'{metric_type}_p') and not np.isnan(getattr(row, f'{metric_type}_p')):
+        # Se a métrica já tem um atributo de porcentagem calculado
+        if metric_type in ['rmse', 'mse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
+            metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)"
         else:
-            # Se precisamos calcular a porcentagem agora
-            metric_value = getattr(row, metric_type)
-            if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
-                # Métricas normalizadas
-                percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
-                percent_suffix = "%"
-            else:
-                # Métricas baseadas em erro
-                percent = (metric_value / row.data_range * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
-                percent_suffix = "% of data range"
-            
-            metric_display = f"{metric_value:.4f} ({percent:.2f}{percent_suffix})" if not np.isnan(percent) else f"{metric_value:.4f} (NaN%)"
-        
-        # Formatando Q3 com porcentagens
-        q3_a_value = getattr(row, f'{metric_type}_q3_a')
-        q3_b_value = getattr(row, f'{metric_type}_q3_b')
-        
+            metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
+    else:
+        # Se precisamos calcular a porcentagem agora
+        metric_value = getattr(row, metric_type)
         if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
-            q3_a_percent = q3_a_value * 100 if not np.isnan(q3_a_value) else np.nan
-            q3_b_percent = q3_b_value * 100 if not np.isnan(q3_b_value) else np.nan
-            q3_a_display = f"{q3_a_value:.4f} ({q3_a_percent:.2f}%)" if not np.isnan(q3_a_value) else 'NaN'
-            q3_b_display = f"{q3_b_value:.4f} ({q3_b_percent:.2f}%)" if not np.isnan(q3_b_value) else 'NaN'
+            # Métricas normalizadas
+            percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
+            percent_suffix = "%"
         else:
-            q3_a_percent = (q3_a_value / row.data_range * 100) if not np.isnan(q3_a_value) and row.data_range != 0 else np.nan
-            q3_b_percent = (q3_b_value / row.data_range * 100) if not np.isnan(q3_b_value) and row.data_range != 0 else np.nan
-            q3_a_display = f"{q3_a_value:.4f} ({q3_a_percent:.2f}% of data range)" if not np.isnan(q3_a_value) else 'NaN'
-            q3_b_display = f"{q3_b_value:.4f} ({q3_b_percent:.2f}% of data range)" if not np.isnan(q3_b_value) else 'NaN'
+            # Métricas baseadas em erro
+            percent = (metric_value / row.data_range * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
+            percent_suffix = "% of data range"
         
-        date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
-        
-        print(f"{idx}. Data: {date_str}")
-        print(f"   Comparação: {row.dataset_a} x {row.dataset_b}")
-        print(f"   Arquivos: {file_info}")
-        print(f"   {metric_type.upper()}: {metric_display}")
-        print(f"   {metric_type.upper()} (Q3 Map A, >= {row.q3_a:.4f}): {q3_a_display}")
-        print(f"   {metric_type.upper()} (Q3 Map B, >= {row.q3_b:.4f}): {q3_b_display}")
-        print(f"   Estatísticas do Dataset A:")
-        print(f"     Min: {row.min_a:.4f}, Median: {row.median_a:.4f}, Mean: {row.mean_a:.4f}, Max: {row.max_a:.4f}")
-        print(f"   Estatísticas do Dataset B:")
-        print(f"     Min: {row.min_b:.4f}, Median: {row.median_b:.4f}, Mean: {row.mean_b:.4f}, Max: {row.max_b:.4f}")
-        print(f"   Estatísticas Combinadas:")
-        print(f"     Min: {row.min_both:.4f}, Median: {row.median_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
-        print(f"     Data Range: {row.data_range:.4f}")
-        if idx < len(top_overall):
-            print("-" * 80)
-    print("-" * 120)
+        metric_display = f"{metric_value:.4f} ({percent:.2f}{percent_suffix})" if not np.isnan(percent) else f"{metric_value:.4f} (NaN%)"
     
-    # Atualização para incluir porcentagens para todas as métricas no DataFrame final
-    overall_metrics = pd.DataFrame({
-        'dataset': list(dataset_avg_metrics.keys()),
-        f'avg_{metric_type}': list(dataset_avg_metrics.values())
-    })
+    date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
     
-    # Adicionando coluna de percentual para todas as métricas
-    percentages = []
-    for dataset, avg_val in dataset_avg_metrics.items():
-        if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
-            percent = avg_val * 100 if not np.isnan(avg_val) else np.nan
-        else:
-            data_ranges = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['data_range'].values
-            avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
-            percent = (avg_val / avg_data_range * 100) if not np.isnan(avg_val) and avg_data_range != 0 else np.nan
-        percentages.append(percent)
-    
-    overall_metrics[f'avg_{metric_type}_percent'] = percentages
-    
-    overall_metrics.to_csv(f'dataset_ranking_{metric_type}.csv', index=False)
-    print(f"\nDataset ranking saved to 'dataset_ranking_{metric_type}.csv'")
-    
-    print("\n===== COMPUTATION SUMMARY =====")
-    print(f"Metric: {metric_name}")
-    print(f"Dataset type: {dataset_suffix}")
-    print(f"Files processed: {processed_files}")
-    print(f"Files skipped: {skipped_files}")
-    print(f"Datasets compared: {len(dataset_avg_metrics)}")
-    print("Robust handling of NaN values in all metric calculations")
-    print("Q3-based metrics calculated for pixels >= Q3 of each map")
-    print("All metrics displayed with percentage values for easier comparison")
-    print("Done!")
+    print(f"{idx}. Data: {date_str}")
+    print(f"   Comparação: {row.dataset_a} x {row.dataset_b}")
+    print(f"   Arquivos: {file_info}")
+    print(f"   {metric_type.upper()}: {metric_display}")
+    print(f"   Estatísticas do Dataset A:")
+    print(f"     Min: {row.min_a:.4f}, Q1: {row.q1_a:.4f}, Median: {row.median_a:.4f}, Q3: {row.q3_a:.4f}, Mean: {row.mean_a:.4f}, Max: {row.max_a:.4f}")
+    print(f"   Estatísticas do Dataset B:")
+    print(f"     Min: {row.min_b:.4f}, Q1: {row.q1_b:.4f}, Median: {row.median_b:.4f}, Q3: {row.q3_b:.4f}, Mean: {row.mean_b:.4f}, Max: {row.max_b:.4f}")
+    print(f"   Estatísticas Combinadas:")
+    print(f"     Min: {row.min_both:.4f}, Q1: {row.q1_both:.4f}, Median: {row.median_both:.4f}, Q3: {row.q3_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
+    print(f"     Data Range: {row.data_range:.4f}")
+    if idx < len(top_overall):
+        print("-" * 80)
+print("-" * 120)
