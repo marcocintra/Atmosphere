@@ -351,7 +351,7 @@ def fisher_z_inverse(z):
     return (np.exp(2 * z) - 1) / (np.exp(2 * z) + 1)
 
 def calculate_strict_stats(map_a, map_b):
-    """Calcula estatísticas consistentes para os mapas, sem Q1 e Q3."""
+    """Calcula estatísticas consistentes para os mapas, incluindo Q1 e Q3."""
     map_a_flat = map_a.flatten() if len(map_a.shape) > 1 else map_a
     map_b_flat = map_b.flatten() if len(map_b.shape) > 1 else map_b
     
@@ -360,35 +360,42 @@ def calculate_strict_stats(map_a, map_b):
     
     if len(valid_a) == 0 or len(valid_b) == 0:
         return {key: np.nan for key in [
-            'min_a', 'max_a', 'mean_a', 'median_a',
-            'min_b', 'max_b', 'mean_b', 'median_b',
-            'min_both', 'max_both', 'mean_both', 'median_both', 'data_range'
+            'min_a', 'q1_a', 'median_a', 'q3_a', 'max_a', 'mean_a',
+            'min_b', 'q1_b', 'median_b', 'q3_b', 'max_b', 'mean_b',
+            'min_both', 'q1_both', 'median_both', 'q3_both', 'max_both', 'mean_both', 
+            'data_range'
         ]}
     
     min_a = float(np.min(valid_a))
+    q1_a = float(np.percentile(valid_a, 25))  # 25º percentil = Q1
+    median_a = float(np.median(valid_a))
+    q3_a = float(np.percentile(valid_a, 75))  # 75º percentil = Q3
     max_a = float(np.max(valid_a))
     mean_a = float(np.mean(valid_a))
-    median_a = float(np.median(valid_a))
     
     min_b = float(np.min(valid_b))
+    q1_b = float(np.percentile(valid_b, 25))
+    median_b = float(np.median(valid_b))
+    q3_b = float(np.percentile(valid_b, 75))
     max_b = float(np.max(valid_b))
     mean_b = float(np.mean(valid_b))
-    median_b = float(np.median(valid_b))
     
     min_both = min(min_a, min_b)
     max_both = max(max_a, max_b)
     
     both_flats = np.concatenate([valid_a, valid_b])
-    mean_both = float(np.mean(both_flats))
+    q1_both = float(np.percentile(both_flats, 25))
     median_both = float(np.median(both_flats))
+    q3_both = float(np.percentile(both_flats, 75))
+    mean_both = float(np.mean(both_flats))
     
     data_range = max_both - min_both if max_both > min_both else 1.0
     
     return {
-        'min_a': min_a, 'max_a': max_a, 'mean_a': mean_a, 'median_a': median_a,
-        'min_b': min_b, 'max_b': max_b, 'mean_b': mean_b, 'median_b': median_b,
-        'min_both': min_both, 'max_both': max_both, 'mean_both': mean_both, 
-        'median_both': median_both, 'data_range': data_range
+        'min_a': min_a, 'q1_a': q1_a, 'median_a': median_a, 'q3_a': q3_a, 'max_a': max_a, 'mean_a': mean_a,
+        'min_b': min_b, 'q1_b': q1_b, 'median_b': median_b, 'q3_b': q3_b, 'max_b': max_b, 'mean_b': mean_b,
+        'min_both': min_both, 'q1_both': q1_both, 'median_both': median_both, 'q3_both': q3_both, 
+        'max_both': max_both, 'mean_both': mean_both, 'data_range': data_range
     }
 
 def load_image(filepath):
