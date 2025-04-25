@@ -230,112 +230,63 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0, pixel_mask=None):
     linear = abs_errors - quadratic
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
-def calculate_ssim(y_true, y_pred, pixel_mask=None):
-    """Calcula o SSIM, tratando casos especiais e problemas de variância zero."""
+def calculate_ssim(y_true, y_pred):
+    """Calcula o SSIM, tratando corretamente os casos com valores NaN."""
+    # Converte para escala de cinza se for imagem colorida
     if len(y_true.shape) > 2 and y_true.shape[2] > 1:
         y_true = np.mean(y_true, axis=2)
     if len(y_pred.shape) > 2 and y_pred.shape[2] > 1:
         y_pred = np.mean(y_pred, axis=2)
     
-    min_pixels = 100  # Minimum number of pixels for meaningful SSIM
-    min_variance = 1e-6  # Minimum variance required for meaningful SSIM
+    # Cria uma máscara de valores válidos (não NaN)
+    valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     
-    # Create working copies to avoid modifying originals
-    y_true_work = y_true.copy()
-    y_pred_work = y_pred.copy()
+    # Verifica se há pixels válidos suficientes
+    if np.sum(valid_mask) < 2:
+        return np.nan
     
-    if pixel_mask is not None:
-        # Ensure the mask is 2D and matches the image dimensions
-        if pixel_mask.shape != y_true.shape:
-            return np.nan
-        
-        # Get count of pixels in mask
-        mask_pixel_count = np.sum(pixel_mask)
-        
-        # Check if the mask has enough pixels
-        if mask_pixel_count < min_pixels:
-            return np.nan
-            
-        # Extract valid pixels from both images using the mask
-        y_true_valid = y_true_work[pixel_mask]
-        y_pred_valid = y_pred_work[pixel_mask]
-        
-        # Check variance of masked regions
-        true_var = np.var(y_true_valid)
-        pred_var = np.var(y_pred_valid)
-        
-        # If either variance is too small, SSIM calculation will be unreliable
-        if true_var < min_variance or pred_var < min_variance:
-            # If both images have identical values in the masked region, they're perfectly similar
-            if np.allclose(y_true_valid, y_pred_valid, rtol=1e-5, atol=1e-8):
-                return 1.0
-            # If images differ but have no variance, use alternative metric
-            else:
-                mean_abs_diff = np.mean(np.abs(y_true_valid - y_pred_valid))
-                max_possible_diff = max(np.max(y_true_valid), np.max(y_pred_valid)) - min(np.min(y_true_valid), np.min(y_pred_valid))
-                if max_possible_diff > 0:
-                    return 1.0 - (mean_abs_diff / max_possible_diff)
-                return 0.0
-        
-        # Create masked versions of the images for SSIM calculation
-        y_true_masked = np.where(pixel_mask, y_true_work, np.nan)
-        y_pred_masked = np.where(pixel_mask, y_pred_work, np.nan)
-        
-        # Use only non-NaN pixels
-        valid_mask = ~np.isnan(y_true_masked) & ~np.isnan(y_pred_masked)
-        if np.sum(valid_mask) < min_pixels:
-            return np.nan
-            
-        y_true_work = y_true_masked
-        y_pred_work = y_pred_masked
-    else:
-        valid_mask = ~np.isnan(y_true_work) & ~np.isnan(y_pred_work)
-        if np.sum(valid_mask) < min_pixels:
-            return np.nan
+    # Cria cópias das imagens onde substituímos NaN por um valor válido
+    # apenas para cálculo do SSIM
+    y_true_valid = y_true.copy()
+    y_pred_valid = y_pred.copy()
     
-    # Fill NaN values with zeros for SSIM calculation
-    y_true_work = np.nan_to_num(y_true_work, nan=0.0)
-    y_pred_work = np.nan_to_num(y_pred_work, nan=0.0)
+    # Determina um valor de preenchimento (pode ser a média dos valores válidos)
+    fill_value_true = np.mean(y_true[valid_mask]) if np.any(valid_mask) else 0
+    fill_value_pred = np.mean(y_pred[valid_mask]) if np.any(valid_mask) else 0
     
-    # Calculate data range for SSIM
-    data_range = np.max([
-        np.max(y_true_work) - np.min(y_true_work),
-        np.max(y_pred_work) - np.min(y_pred_work)
-    ])
+    # Preenche valores NaN com os valores calculados
+    y_true_valid[~valid_mask] = fill_value_true
+    y_pred_valid[~valid_mask] = fill_value_pred
     
-    if data_range <= 0:
-        # If data range is zero, check if all pixels are identical
-        if np.allclose(y_true_work, y_pred_work, rtol=1e-5, atol=1e-8):
-            return 1.0  # Perfect similarity
-        data_range = 1.0  # Fallback to avoid division by zero
+    # Calcula o intervalo de dados para valores válidos
+    data_range = max(np.max(y_true[valid_mask]) - np.min(y_true[valid_mask]), 
+                     np.max(y_pred[valid_mask]) - np.min(y_pred[valid_mask]))
+    if data_range == 0:
+        data_range = 1
     
+    # Tenta calcular SSIM
     try:
-        ssim_value = ssim(y_true_work, y_pred_work, data_range=data_range)
-        # Check if result is valid
-        if np.isnan(ssim_value) or np.isinf(ssim_value):
+        # Se a maioria dos pixels (>50%) não for válida, retorna NaN
+        if np.sum(valid_mask) < 0.5 * valid_mask.size:
             return np.nan
-        return ssim_value
+        
+        return ssim(y_true_valid, y_pred_valid, data_range=data_range)
     except Exception as e:
-        # Handle cases where SSIM fails
-        try:
-            if y_true_work.shape != y_pred_work.shape:
-                min_height = min(y_true_work.shape[0], y_pred_work.shape[0])
-                min_width = min(y_true_work.shape[1], y_pred_work.shape[1])
-                y_true_resized = y_true_work[:min_height, :min_width]
-                y_pred_resized = y_pred_work[:min_height, :min_width]
-                
-                data_range = np.max([
-                    np.max(y_true_resized) - np.min(y_true_resized),
-                    np.max(y_pred_resized) - np.min(y_pred_resized)
-                ])
-                
-                if data_range <= 0:
-                    data_range = 1.0
-                    
+        # Se houver erro por diferença de dimensões
+        if y_true.shape != y_pred.shape:
+            min_height = min(y_true.shape[0], y_pred.shape[0])
+            min_width = min(y_true.shape[1], y_pred.shape[1])
+            y_true_resized = y_true_valid[:min_height, :min_width]
+            y_pred_resized = y_pred_valid[:min_height, :min_width]
+            
+            # Tenta novamente com as imagens redimensionadas
+            try:
                 return ssim(y_true_resized, y_pred_resized, data_range=data_range)
-            return np.nan
-        except:
-            return np.nan
+            except Exception:
+                return np.nan
+        
+        print(f"Erro ao calcular SSIM: {e}")
+        return np.nan
 
 def fisher_z_transform(r):
     """Transforma correlação r para valor z, evitando valores extremos."""
