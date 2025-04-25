@@ -862,30 +862,63 @@ if __name__ == '__main__':
     }.get(metric_type, metric_type.upper())
     
     print(f"\n===== DATASET {metric_name} ANALYSIS =====")
-    print(f"Best dataset: {format_dataset_metric(best_dataset[0], best_dataset[1])}")
-    print(f"Worst dataset: {format_dataset_metric(worst_dataset[0], worst_dataset[1])}")
-    
-    print("\nDataset Ranking (from best to worst):")
-    sorted_datasets = sorted(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('-inf'), reverse=higher_is_better)
-    
-    for i, (dataset, avg_val) in enumerate(sorted_datasets, 1):
-        if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
-            percent = avg_val * 100 if not np.isnan(avg_val) else np.nan
-            percent_suffix = "%"
-        elif metric_type == 'mse':
-            # MSE precisa ser normalizado pelo quadrado do data_range
-            data_ranges = df[df['source_a'] == dataset]['data_range'].tolist() + df[df['source_b'] == dataset]['data_range'].tolist()
-            avg_data_range = np.nanmean(data_ranges) if data_ranges else 1.0
-            percent = (avg_val / (avg_data_range ** 2) * 100) if not np.isnan(avg_val) and avg_data_range != 0 else np.nan
-            percent_suffix = "% of squared data range"
-        else:
-            data_ranges = df[df['source_a'] == dataset]['data_range'].tolist() + df[df['source_b'] == dataset]['data_range'].tolist()
-            avg_data_range = np.nanmean(data_ranges) if data_ranges else 1.0
-            percent = (avg_val / avg_data_range * 100) if not np.isnan(avg_val) and avg_data_range != 0 else np.nan
-            percent_suffix = "% of data range"
 
-        percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
-        print(f"{i}. {dataset}: {avg_val:.4f} {percent_display}")
+# Calculate percentages for each dataset for proper sorting
+dataset_percentages = {}
+for dataset, avg_val in dataset_avg_metrics.items():
+    if np.isnan(avg_val):
+        dataset_percentages[dataset] = np.nan
+        continue
+        
+    if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+        dataset_percentages[dataset] = avg_val * 100
+    else:
+        data_ranges = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['data_range'].values
+        avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
+        if metric_type == 'mse' and avg_data_range != 0:
+            dataset_percentages[dataset] = (avg_val / (avg_data_range ** 2) * 100)
+        elif avg_data_range != 0:
+            dataset_percentages[dataset] = (avg_val / avg_data_range * 100)
+        else:
+            dataset_percentages[dataset] = np.nan
+
+# Find best and worst by percentage, not raw value
+if higher_is_better:
+    best_dataset_name = max(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('-inf'))[0]
+    worst_dataset_name = min(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'))[0]
+else:
+    best_dataset_name = min(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'))[0]
+    worst_dataset_name = max(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('-inf'))[0]
+
+best_dataset = (best_dataset_name, dataset_avg_metrics[best_dataset_name])
+worst_dataset = (worst_dataset_name, dataset_avg_metrics[worst_dataset_name])
+
+print(f"Best dataset: {format_dataset_metric(best_dataset[0], best_dataset[1])}")
+print(f"Worst dataset: {format_dataset_metric(worst_dataset[0], worst_dataset[1])}")
+    
+print("\nDataset Ranking (from best to worst):")
+# Sort by percentage value, maintaining the (dataset, raw_value) structure but ordering by percentage
+sorted_datasets_with_percent = [(d, v, dataset_percentages[d]) for d, v in dataset_avg_metrics.items()]
+if higher_is_better:
+    sorted_datasets_with_percent.sort(key=lambda x: float('-inf') if np.isnan(x[2]) else x[2], reverse=True)
+else:
+    sorted_datasets_with_percent.sort(key=lambda x: float('inf') if np.isnan(x[2]) else x[2], reverse=False)
+
+# Display the ranking with both raw value and percentage
+for i, (dataset, avg_val, pct) in enumerate(sorted_datasets_with_percent, 1):
+    if np.isnan(avg_val):
+        print(f"{i}. {dataset}: NaN (unable to calculate metric)")
+        continue
+        
+    if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+        percent_suffix = "%"
+    elif metric_type == 'mse':
+        percent_suffix = "% of squared data range"
+    else:
+        percent_suffix = "% of data range"
+
+    percent_display = f"({pct:.2f}{percent_suffix})" if not np.isnan(pct) else "(NaN%)"
+    print(f"{i}. {dataset}: {avg_val:.4f} {percent_display}")
     
 overall_top_count = 50
 
