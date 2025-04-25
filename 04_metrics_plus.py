@@ -145,27 +145,61 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0):
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
 def calculate_ssim(y_true, y_pred):
-    """Calcula o SSIM, tratando casos especiais."""
+    """Calcula o SSIM, tratando corretamente os casos com valores NaN."""
+    # Converte para escala de cinza se for imagem colorida
     if len(y_true.shape) > 2 and y_true.shape[2] > 1:
         y_true = np.mean(y_true, axis=2)
     if len(y_pred.shape) > 2 and y_pred.shape[2] > 1:
         y_pred = np.mean(y_pred, axis=2)
+    
+    # Cria uma máscara de valores válidos (não NaN)
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    
+    # Verifica se há pixels válidos suficientes
     if np.sum(valid_mask) < 2:
         return np.nan
+    
+    # Cria cópias das imagens onde substituímos NaN por um valor válido
+    # apenas para cálculo do SSIM
+    y_true_valid = y_true.copy()
+    y_pred_valid = y_pred.copy()
+    
+    # Determina um valor de preenchimento (pode ser a média dos valores válidos)
+    fill_value_true = np.mean(y_true[valid_mask]) if np.any(valid_mask) else 0
+    fill_value_pred = np.mean(y_pred[valid_mask]) if np.any(valid_mask) else 0
+    
+    # Preenche valores NaN com os valores calculados
+    y_true_valid[~valid_mask] = fill_value_true
+    y_pred_valid[~valid_mask] = fill_value_pred
+    
+    # Calcula o intervalo de dados para valores válidos
     data_range = max(np.max(y_true[valid_mask]) - np.min(y_true[valid_mask]), 
                      np.max(y_pred[valid_mask]) - np.min(y_pred[valid_mask]))
     if data_range == 0:
         data_range = 1
+    
+    # Tenta calcular SSIM
     try:
-        return ssim(y_true, y_pred, data_range=data_range)
-    except Exception:
+        # Se a maioria dos pixels (>50%) não for válida, retorna NaN
+        if np.sum(valid_mask) < 0.5 * valid_mask.size:
+            return np.nan
+        
+        return ssim(y_true_valid, y_pred_valid, data_range=data_range)
+    except Exception as e:
+        # Se houver erro por diferença de dimensões
         if y_true.shape != y_pred.shape:
             min_height = min(y_true.shape[0], y_pred.shape[0])
             min_width = min(y_true.shape[1], y_pred.shape[1])
-            y_true_resized = y_true[:min_height, :min_width]
-            y_pred_resized = y_pred[:min_height, :min_width]
-            return ssim(y_true_resized, y_pred_resized, data_range=data_range)
+            y_true_resized = y_true_valid[:min_height, :min_width]
+            y_pred_resized = y_pred_valid[:min_height, :min_width]
+            
+            # Tenta novamente com as imagens redimensionadas
+            try:
+                return ssim(y_true_resized, y_pred_resized, data_range=data_range)
+            except Exception:
+                return np.nan
+        
+        print(f"Erro ao calcular SSIM: {e}")
         return np.nan
 
 def fisher_z_transform(r):
