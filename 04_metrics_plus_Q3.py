@@ -632,39 +632,39 @@ if __name__ == '__main__':
     
     base_datasets = {
         'embrace': [
-            'mapas1_embrace_2022_2024_0800',
-            'mapas1_embrace_2022_2024_1600',
-            'mapas1_embrace_2022_2024_2000_2200_0000_0200_0400',
+            # 'mapas1_embrace_2022_2024_0800',
+            # 'mapas1_embrace_2022_2024_1600',
+            # 'mapas1_embrace_2022_2024_2000_2200_0000_0200_0400',
             'mapas3_embrace_2024_0800_30m',
             'mapas3_embrace_2024_1600_30m',
             'mapas3_embrace_2024_2000_0400_30m'
         ],
-        'igs': [
-            'mapas1_igs_2022_2024_0800',
-            'mapas1_igs_2022_2024_1600',
-            'mapas1_igs_2022_2024_2000_2200_0000_0200_0400',
-            'mapas2_igs_2022_2024_0800',
-            'mapas2_igs_2022_2024_1600',
-            'mapas2_igs_2022_2024_2000_2200_0000_0200_0400'
-        ],
+        # 'igs': [
+        #     'mapas1_igs_2022_2024_0800',
+        #     'mapas1_igs_2022_2024_1600',
+        #     'mapas1_igs_2022_2024_2000_2200_0000_0200_0400',
+        #     'mapas2_igs_2022_2024_0800',
+        #     'mapas2_igs_2022_2024_1600',
+        #     'mapas2_igs_2022_2024_2000_2200_0000_0200_0400'
+        # ],
         'maggia': [
-            'mapas1_maggia_2022_2024_0800',
-            'mapas1_maggia_2022_2024_1600',
-            'mapas1_maggia_2022_2024_2000_2200_0000_0200_0400',
-            'mapas2_maggia_2022_2024_0800',
-            'mapas2_maggia_2024_1600_30m',
-            'mapas2_maggia_2022_2024_2000_2200_0000_0200_0400',
+            # 'mapas1_maggia_2022_2024_0800',
+            # 'mapas1_maggia_2022_2024_1600',
+            # 'mapas1_maggia_2022_2024_2000_2200_0000_0200_0400',
+            # 'mapas2_maggia_2022_2024_0800',
+            # 'mapas2_maggia_2024_1600_30m',
+            # 'mapas2_maggia_2022_2024_2000_2200_0000_0200_0400',
             'mapas3_maggia_2024_0800_30m',
             'mapas3_maggia_2024_1600_30m',
             'mapas3_maggia_2024_2000_0400_30m'
         ],
         'nagoya': [
-            'mapas1_nagoya_2022_2024_0800',
-            'mapas1_nagoya_2022_2024_1600',
-            'mapas1_nagoya_2022_2024_2000_2200_0000_0200_0400',
-            'mapas2_nagoya_2022_2024_0800',
-            'mapas2_nagoya_2024_1600_30m',
-            'mapas2_nagoya_2022_2024_2000_2200_0000_0200_0400',
+            # 'mapas1_nagoya_2022_2024_0800',
+            # 'mapas1_nagoya_2022_2024_1600',
+            # 'mapas1_nagoya_2022_2024_2000_2200_0000_0200_0400',
+            # 'mapas2_nagoya_2022_2024_0800',
+            # 'mapas2_nagoya_2024_1600_30m',
+            # 'mapas2_nagoya_2022_2024_2000_2200_0000_0200_0400',
             'mapas3_nagoya_2024_0800_30m',
             'mapas3_nagoya_2024_1600_30m',
             'mapas3_nagoya_2024_2000_0400_30m'
@@ -676,11 +676,11 @@ if __name__ == '__main__':
                 for source, dataset_list in base_datasets.items()}
     
     comparisons = [
-        ['embrace', 'igs'],
+        # ['embrace', 'igs'],
         ['embrace', 'maggia'],
         ['embrace', 'nagoya'],
-        ['igs', 'maggia'],
-        ['igs', 'nagoya'],
+        # ['igs', 'maggia'],
+        # ['igs', 'nagoya'],
         ['maggia', 'nagoya']
     ]
     
@@ -1313,21 +1313,36 @@ if __name__ == '__main__':
     print(f"Best dataset: {format_dataset_metric(best_dataset[0], best_dataset[1])}")
     print(f"Worst dataset: {format_dataset_metric(worst_dataset[0], worst_dataset[1])}")
     
-    # FIX: Improved dataset ranking section to handle NaN values properly
     print("\nDataset Ranking (from best to worst):")
-    # First handle NaN values to ensure consistent sorting
-    sorted_datasets = [(dataset, avg_val) for dataset, avg_val in dataset_avg_metrics.items()]
-    
-    # Sort handling NaN values appropriately
+    dataset_percentages = {}
+    for dataset, avg_val in dataset_avg_metrics.items():
+        if np.isnan(avg_val):
+            dataset_percentages[dataset] = np.nan
+            continue
+            
+        if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+            # Métricas já normalizadas - porcentagem é direta
+            dataset_percentages[dataset] = avg_val * 100
+        else:
+            # Para métricas de erro, normalizar pelo data range
+            data_ranges = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['data_range'].values
+            avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
+            if metric_type == 'mse' and avg_data_range != 0:
+                dataset_percentages[dataset] = (avg_val / (avg_data_range ** 2) * 100)
+            elif avg_data_range != 0:
+                dataset_percentages[dataset] = (avg_val / avg_data_range * 100)
+            else:
+                dataset_percentages[dataset] = np.nan
+
+    # Ordenar por percentagem
+    sorted_datasets_with_percent = [(d, v, dataset_percentages[d]) for d, v in dataset_avg_metrics.items()]
     if higher_is_better:
-        sorted_datasets.sort(key=lambda x: float('-inf') if np.isnan(x[1]) else x[1], reverse=True)
+        sorted_datasets_with_percent.sort(key=lambda x: float('-inf') if np.isnan(x[2]) else x[2], reverse=True)
     else:
-        sorted_datasets.sort(key=lambda x: float('inf') if np.isnan(x[1]) else x[1], reverse=False)
-    
-    if not sorted_datasets:
-        print("No valid datasets found for ranking.")
-    else:
-        for i, (dataset, avg_val) in enumerate(sorted_datasets, 1):
+        sorted_datasets_with_percent.sort(key=lambda x: float('inf') if np.isnan(x[2]) else x[2], reverse=False)
+
+    # Exibir ranking
+    for i, (dataset, avg_val, percent) in enumerate(sorted_datasets_with_percent, 1):
             try:
                 if np.isnan(avg_val):
                     print(f"{i}. {dataset}: NaN (unable to calculate metric)")
