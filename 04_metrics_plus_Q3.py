@@ -10,38 +10,68 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-def calculate_q3_mask(map_data):
+def calculate_q3_mask(map_data, verbose=False):
     """Calcula Q3 (75º percentil) e retorna máscara para pixels >= Q3."""
+    if verbose:
+        print(f"Calculating Q3 mask for data shape {map_data.shape}")
+    
     # Create mask of non-NaN pixels
     non_nan_mask = ~np.isnan(map_data)
+    non_nan_count = np.sum(non_nan_mask)
+    
+    if verbose:
+        print(f"Non-NaN pixels: {non_nan_count}/{map_data.size} ({non_nan_count/map_data.size*100:.2f}%)")
     
     # Get valid (non-NaN) pixels for percentile calculation
     valid_pixels = map_data[non_nan_mask]
     
     if len(valid_pixels) == 0:
+        if verbose:
+            print("No valid pixels found for Q3 calculation")
         return None, np.nan
         
     # Calculate Q3 from valid pixels
     q3 = np.percentile(valid_pixels, 75)
+    if verbose:
+        print(f"Q3 value: {q3:.4f}")
     
     # Special handling for cases where Q3 equals max value
     unique_values = np.unique(valid_pixels)
     if q3 == np.max(valid_pixels) and len(unique_values) > 1:
-        # If Q3 equals the max value but there are other values,
-        # try using a slightly lower threshold to ensure variance
+        if verbose:
+            print("Q3 equals max value, using second highest value instead")
         q3 = unique_values[-2]  # Use second highest value
     
     # Create a mask where pixels are both non-NaN AND >= Q3
     mask = non_nan_mask & (map_data >= q3)
+    mask_count = np.sum(mask)
+    
+    if verbose:
+        mask_percent = mask_count / map_data.size * 100
+        print(f"Pixels in Q3 mask: {mask_count} ({mask_percent:.2f}%)")
     
     # Ensure we have enough pixels (at least 5% of original valid pixels)
     min_required = max(100, len(valid_pixels) * 0.05)
-    if np.sum(mask) < min_required:
+    if mask_count < min_required:
+        if verbose:
+            print(f"Not enough pixels in Q3 mask, trying more lenient threshold (min: {min_required})")
+        
         # Try a more lenient threshold
         q3_adjusted = np.percentile(valid_pixels, 65)  # Try 65th percentile instead
+        if verbose:
+            print(f"Adjusted to 65th percentile: {q3_adjusted:.4f}")
+        
         mask = non_nan_mask & (map_data >= q3_adjusted)
-        if np.sum(mask) >= min_required:
+        mask_count = np.sum(mask)
+        
+        if verbose:
+            print(f"Pixels in adjusted Q3 mask: {mask_count} ({mask_count/map_data.size*100:.2f}%)")
+        
+        if mask_count >= min_required:
             return mask, q3_adjusted
+        
+        if verbose:
+            print("Still not enough pixels with adjusted threshold")
         return None, q3
     
     return mask, q3
@@ -230,62 +260,202 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0, pixel_mask=None):
     linear = abs_errors - quadratic
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
-def calculate_ssim(y_true, y_pred):
-    """Calcula o SSIM, tratando corretamente os casos com valores NaN."""
+def calculate_ssim(y_true, y_pred, verbose=False):
+    """Calcula o SSIM apenas nas regiões onde ambas as imagens têm valores não-NaN."""
     # Converte para escala de cinza se for imagem colorida
     if len(y_true.shape) > 2 and y_true.shape[2] > 1:
         y_true = np.mean(y_true, axis=2)
     if len(y_pred.shape) > 2 and y_pred.shape[2] > 1:
         y_pred = np.mean(y_pred, axis=2)
     
+    if verbose:
+        print(f"\nSSIM calculation:")
+        print(f"Input shapes: y_true={y_true.shape}, y_pred={y_pred.shape}")
+        print(f"Data ranges: y_true=[{np.nanmin(y_true):.4f}, {np.nanmax(y_true):.4f}], "
+              f"y_pred=[{np.nanmin(y_pred):.4f}, {np.nanmax(y_pred):.4f}]")
+        print(f"NaN counts: y_true={np.isnan(y_true).sum()}, y_pred={np.isnan(y_pred).sum()}")
+    
     # Cria uma máscara de valores válidos (não NaN)
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    valid_pixel_count = np.sum(valid_mask)
+    valid_percentage = valid_pixel_count / valid_mask.size * 100
+    
+    if verbose:
+        print(f"Valid pixels: {valid_pixel_count}/{valid_mask.size} ({valid_percentage:.2f}%)")
     
     # Verifica se há pixels válidos suficientes
-    if np.sum(valid_mask) < 2:
+    min_pixels = 100  # Mínimo de pixels para um SSIM significativo
+    if valid_pixel_count < min_pixels:
+        if verbose:
+            print(f"SSIM failed: Too few valid pixels ({valid_pixel_count})")
         return np.nan
     
-    # Cria cópias das imagens onde substituímos NaN por um valor válido
-    # apenas para cálculo do SSIM
-    y_true_valid = y_true.copy()
-    y_pred_valid = y_pred.copy()
+    # Extrair apenas os pixels válidos para calcular estatísticas
+    y_true_pixels = y_true[valid_mask]
+    y_pred_pixels = y_pred[valid_mask]
     
-    # Determina um valor de preenchimento (pode ser a média dos valores válidos)
-    fill_value_true = np.mean(y_true[valid_mask]) if np.any(valid_mask) else 0
-    fill_value_pred = np.mean(y_pred[valid_mask]) if np.any(valid_mask) else 0
+    # Verificar se há variância suficiente para um cálculo significativo
+    min_variance = 1e-6
+    true_var = np.var(y_true_pixels)
+    pred_var = np.var(y_pred_pixels)
     
-    # Preenche valores NaN com os valores calculados
-    y_true_valid[~valid_mask] = fill_value_true
-    y_pred_valid[~valid_mask] = fill_value_pred
+    if verbose:
+        print(f"Variance check: y_true_var={true_var:.6f}, y_pred_var={pred_var:.6f}, min={min_variance}")
     
-    # Calcula o intervalo de dados para valores válidos
-    data_range = max(np.max(y_true[valid_mask]) - np.min(y_true[valid_mask]), 
-                     np.max(y_pred[valid_mask]) - np.min(y_pred[valid_mask]))
+    if true_var < min_variance or pred_var < min_variance:
+        if verbose:
+            print(f"Low variance detected in images")
+        
+        # Se ambos são praticamente constantes e iguais
+        if np.allclose(y_true_pixels, y_pred_pixels, rtol=1e-5, atol=1e-8):
+            if verbose:
+                print("Images are constant and identical, returning 1.0")
+            return 1.0
+        
+        # Se são constantes mas diferentes
+        mean_abs_diff = np.mean(np.abs(y_true_pixels - y_pred_pixels))
+        max_possible_diff = max(np.max(y_true_pixels), np.max(y_pred_pixels)) - min(np.min(y_true_pixels), np.min(y_pred_pixels))
+        
+        if max_possible_diff > 0:
+            similarity = 1.0 - (mean_abs_diff / max_possible_diff)
+            if verbose:
+                print(f"Computed similarity for constant images: {similarity:.4f}")
+            return similarity
+            
+        if verbose:
+            print("Unable to compute meaningful similarity, returning 0.0")
+        return 0.0
+    
+    # Para calcular o SSIM com a biblioteca, precisamos criar versões das imagens
+    # onde regiões não válidas são substituídas por um valor constante que não
+    # afeta o cálculo nas regiões válidas
+    y_true_for_ssim = y_true.copy()
+    y_pred_for_ssim = y_pred.copy()
+    
+    # Usar o mesmo valor constante para ambas as imagens em regiões não válidas
+    # Isso faz com que o SSIM dessas regiões seja 1.0 (idêntico) e não afete o cálculo
+    constant_value = np.mean(y_true_pixels)
+    y_true_for_ssim[~valid_mask] = constant_value
+    y_pred_for_ssim[~valid_mask] = constant_value
+    
+    # Calcula o intervalo de dados apenas com valores válidos
+    data_range = max(np.max(y_true_pixels) - np.min(y_true_pixels), 
+                     np.max(y_pred_pixels) - np.min(y_pred_pixels))
     if data_range == 0:
-        data_range = 1
+        data_range = 1.0
+        if verbose:
+            print("Zero data range detected, using default value of 1.0")
     
     # Tenta calcular SSIM
     try:
-        # Se a maioria dos pixels (>50%) não for válida, retorna NaN
-        if np.sum(valid_mask) < 0.5 * valid_mask.size:
-            return np.nan
+        # Se a maioria dos pixels (>50%) não for válida, ainda calculamos, mas com alerta
+        if valid_percentage < 50 and verbose:
+            print(f"SSIM warning: Less than 50% valid pixels ({valid_percentage:.2f}%)")
         
-        return ssim(y_true_valid, y_pred_valid, data_range=data_range)
+        # Calcula o SSIM - as regiões não válidas não afetam o resultado
+        # pois têm valores idênticos em ambas as imagens
+        ssim_value = ssim(y_true_for_ssim, y_pred_for_ssim, data_range=data_range)
+        
+        # Verificar se o resultado é válido
+        if np.isnan(ssim_value) or np.isinf(ssim_value):
+            if verbose:
+                print(f"SSIM calculation returned invalid value: {ssim_value}")
+            return np.nan
+            
+        if verbose:
+            print(f"SSIM calculation successful: {ssim_value:.4f}")
+        return ssim_value
     except Exception as e:
         # Se houver erro por diferença de dimensões
         if y_true.shape != y_pred.shape:
+            if verbose:
+                print(f"Attempting SSIM with resized arrays")
+            
             min_height = min(y_true.shape[0], y_pred.shape[0])
             min_width = min(y_true.shape[1], y_pred.shape[1])
-            y_true_resized = y_true_valid[:min_height, :min_width]
-            y_pred_resized = y_pred_valid[:min_height, :min_width]
+            y_true_resized = y_true_for_ssim[:min_height, :min_width]
+            y_pred_resized = y_pred_for_ssim[:min_height, :min_width]
             
             # Tenta novamente com as imagens redimensionadas
             try:
-                return ssim(y_true_resized, y_pred_resized, data_range=data_range)
-            except Exception:
+                result = ssim(y_true_resized, y_pred_resized, data_range=data_range)
+                if verbose:
+                    print(f"SSIM with resized arrays successful: {result:.4f}")
+                return result
+            except Exception as e2:
+                if verbose:
+                    print(f"SSIM with resized arrays failed: {str(e2)}")
                 return np.nan
         
-        print(f"Erro ao calcular SSIM: {e}")
+        if verbose:
+            print(f"SSIM calculation failed: {str(e)}")
+        return np.nan
+
+def calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_q3, verbose=False):
+    """Calculate SSIM with Q3 mask applied."""
+    if mask_q3 is None:
+        if verbose:
+            print("No Q3 mask provided for SSIM calculation")
+        return np.nan
+    
+    # For SSIM with Q3 mask, we need to:
+    # 1. Keep the spatial relationship (2D structure)
+    # 2. Only consider pixels in the Q3 mask
+    # 3. Replace non-Q3 pixels with a constant value
+    
+    # Create copies for modification
+    y_true_q3 = y_true_2d.copy()
+    y_pred_q3 = y_pred_2d.copy()
+    
+    # Get valid pixels in the Q3 mask
+    valid_q3_mask = mask_q3 & ~np.isnan(y_true_2d) & ~np.isnan(y_pred_2d)
+    valid_pixel_count = np.sum(valid_q3_mask)
+    
+    if verbose:
+        valid_percent = valid_pixel_count / valid_q3_mask.size * 100
+        print(f"Valid pixels in Q3 mask: {valid_pixel_count}/{valid_q3_mask.size} ({valid_percent:.2f}%)")
+    
+    # Check if we have enough pixels
+    min_pixels = 100
+    if valid_pixel_count < min_pixels:
+        if verbose:
+            print(f"Too few valid pixels in Q3 mask: {valid_pixel_count} < {min_pixels}")
+        return np.nan
+    
+    # Calculate a constant value for non-Q3 regions
+    # (we use mean of valid Q3 pixels to ensure the non-Q3 regions 
+    # don't affect the SSIM calculation)
+    y_true_q3_values = y_true_2d[valid_q3_mask]
+    if len(y_true_q3_values) == 0:
+        if verbose:
+            print("No valid pixels in Q3 mask for SSIM calculation")
+        return np.nan
+    
+    constant_value = np.mean(y_true_q3_values)
+    
+    # Replace non-Q3 pixels with constant value
+    y_true_q3[~valid_q3_mask] = constant_value
+    y_pred_q3[~valid_q3_mask] = constant_value
+    
+    # Calculate data range based only on Q3 pixels
+    data_range = max(
+        np.max(y_true_2d[valid_q3_mask]) - np.min(y_true_2d[valid_q3_mask]),
+        np.max(y_pred_2d[valid_q3_mask]) - np.min(y_pred_2d[valid_q3_mask])
+    )
+    if data_range == 0:
+        data_range = 1.0
+        if verbose:
+            print("Zero data range in Q3 pixels, using default value of 1.0")
+    
+    # Calculate SSIM on the modified images
+    try:
+        ssim_value = ssim(y_true_q3, y_pred_q3, data_range=data_range)
+        if verbose:
+            print(f"Q3-masked SSIM calculation: {ssim_value:.4f}")
+        return ssim_value
+    except Exception as e:
+        if verbose:
+            print(f"Error calculating Q3-masked SSIM: {e}")
         return np.nan
 
 def fisher_z_transform(r):
@@ -313,8 +483,7 @@ def calculate_strict_stats(map_a, map_b):
         return {key: np.nan for key in [
             'min_a', 'q1_a', 'median_a', 'q3_a', 'max_a', 'mean_a',
             'min_b', 'q1_b', 'median_b', 'q3_b', 'max_b', 'mean_b',
-            'min_both', 'q1_both', 'median_both', 'q3_both', 'max_both', 'mean_both', 
-            'data_range'
+            'min_both', 'q1_both', 'median_both', 'q3_both', 'max_both', 'mean_both', 'data_range'
         ]}
     
     min_a = float(np.min(valid_a))
@@ -349,22 +518,46 @@ def calculate_strict_stats(map_a, map_b):
         'max_both': max_both, 'mean_both': mean_both, 'data_range': data_range
     }
 
-def load_image(filepath):
-    """Carrega uma imagem ou arquivo .npy e retorna como array numpy."""
+def load_image(filepath, verbose=False):
+    """Carrega uma imagem ou arquivo .npy com melhor tratamento de erro."""
     if filepath.suffix.lower() in ['.png', '.jpg', '.jpeg', '.tif', '.tiff']:
         try:
             img = imread(filepath)
+            
+            if verbose:
+                print(f"Loaded image {filepath.name}: shape={img.shape}, dtype={img.dtype}")
+                if len(img.shape) > 2:
+                    print(f"  Image has {img.shape[2]} channels")
+                if np.isnan(img).any():
+                    print(f"  Image contains {np.isnan(img).sum()} NaN values")
+                print(f"  Value range: [{np.nanmin(img)}, {np.nanmax(img)}]")
+            
             if len(img.shape) > 2 and img.shape[2] > 1:
                 img = np.mean(img, axis=2)
+                if verbose:
+                    print(f"  Converted to grayscale: shape={img.shape}")
+            
             return img
-        except Exception:
+        except Exception as e:
+            if verbose:
+                print(f"ERROR loading {filepath}: {str(e)}")
             return None
     elif filepath.suffix.lower() == '.npy':
         try:
-            return np.load(filepath)
-        except Exception:
+            img = np.load(filepath)
+            if verbose:
+                print(f"Loaded numpy array {filepath.name}: shape={img.shape}, dtype={img.dtype}")
+                if np.isnan(img).any():
+                    print(f"  Array contains {np.isnan(img).sum()} NaN values")
+                print(f"  Value range: [{np.nanmin(img)}, {np.nanmax(img)}]")
+            return img
+        except Exception as e:
+            if verbose:
+                print(f"ERROR loading {filepath}: {str(e)}")
             return None
     else:
+        if verbose:
+            print(f"Unsupported file format: {filepath}")
         return None
 
 def verify_combined_stats(selection):
@@ -406,6 +599,12 @@ if __name__ == '__main__':
                         help='Swap y_true and y_pred for R² and residual calculations')
     parser.add_argument('--normalize-residuals', action='store_true',
                         help='Normalize y_pred for residual calculations')
+    parser.add_argument('--verbose', action='store_true',
+                        help='Enable verbose output for debugging')
+    parser.add_argument('--sample-debug', type=int, default=0,
+                        help='Number of sample file pairs to debug in detail')
+    parser.add_argument('--check-images', action='store_true',
+                        help='Verify image loading without running full analysis')
     args = parser.parse_args()
     
     if args.check_existing:
@@ -425,6 +624,9 @@ if __name__ == '__main__':
     filter_mapas3 = args.filter_mapas3
     swap_ytrue_ypred = args.swap_ytrue_ypred
     normalize_residuals = args.normalize_residuals
+    verbose = args.verbose
+    sample_debug = args.sample_debug
+    check_images = args.check_images
     
     higher_is_better = metric_type in ['pearson', 'r2', 'cosine', 'ssim']
     
@@ -510,6 +712,20 @@ if __name__ == '__main__':
     for d in existing_dirs:
         print(f"  - {d.name}")
     
+    # If we're just checking images, do that and exit
+    if check_images:
+        print("\nRunning image loading check for a sample of images...")
+        for d in existing_dirs:
+            sample_files = list(d.glob(file_extension))[:5]  # Check first 5 files
+            print(f"\nChecking {len(sample_files)} files in {d.name}:")
+            for file_path in sample_files:
+                img = load_image(file_path, verbose=True)
+                if img is None:
+                    print(f"FAILED to load {file_path.name}")
+                else:
+                    print(f"SUCCESS loading {file_path.name}")
+        exit(0)
+    
     processed_files = 0
     skipped_files = 0
     result = []
@@ -543,17 +759,32 @@ if __name__ == '__main__':
             print(f"\nProcessing {dataset_a} x {dataset_b}")
             print(f"Found {len(files_a)} {file_extension} files in {dataset_a}")
             
+            debug_count = 0
             for file_a in files_a:
                 file_b = dir_b / file_a.name
                 if not file_b.exists():
                     skipped_files += 1
+                    if verbose:
+                        print(f"Skipping {file_a.name} - corresponding file not found in {dataset_b}")
                     continue
                 
+                # Enhanced debugging for a sample of files
+                file_verbose = verbose or (sample_debug > 0 and debug_count < sample_debug)
+                if file_verbose:
+                    debug_count += 1
+                    print(f"\n{'='*40}")
+                    print(f"Processing file pair: {file_a.name}")
+                    print(f"  Source A: {dir_a}")
+                    print(f"  Source B: {dir_b}")
+                
                 try:
-                    map_a = load_image(file_a)
-                    map_b = load_image(file_b)
+                    map_a = load_image(file_a, verbose=file_verbose)
+                    map_b = load_image(file_b, verbose=file_verbose)
+                    
                     if map_a is None or map_b is None:
                         skipped_files += 1
+                        if file_verbose:
+                            print(f"Skipping {file_a.name} - failed to load one or both images")
                         continue
                     
                     map_a = np.nan_to_num(map_a, nan=np.nan)
@@ -564,14 +795,25 @@ if __name__ == '__main__':
                     processed_files += 1
                     stats = calculate_strict_stats(map_a, map_b)
                     
-                    # Calculate Q3 masks
-                    mask_a_q3, q3_a = calculate_q3_mask(map_a)
-                    mask_b_q3, q3_b = calculate_q3_mask(map_b)
+                    if file_verbose:
+                        print(f"Statistics calculated for map pair:")
+                        print(f"  Map A: Min={stats['min_a']:.4f}, Mean={stats['mean_a']:.4f}, Max={stats['max_a']:.4f}")
+                        print(f"  Map B: Min={stats['min_b']:.4f}, Mean={stats['mean_b']:.4f}, Max={stats['max_b']:.4f}")
+                        print(f"  Combined data range: {stats['data_range']:.4f}")
                     
-                    # Validate Q3 masks for SSIM
+                    # Calculate Q3 masks
+                    mask_a_q3, q3_a = calculate_q3_mask(map_a, verbose=file_verbose)
+                    mask_b_q3, q3_b = calculate_q3_mask(map_b, verbose=file_verbose)
+                    
+                    # Validate Q3 masks
                     min_pixels = 100
                     valid_q3_a = mask_a_q3 is not None and mask_a_q3.sum() >= min_pixels
                     valid_q3_b = mask_b_q3 is not None and mask_b_q3.sum() >= min_pixels
+                    
+                    if file_verbose:
+                        print(f"Q3 mask validation:")
+                        print(f"  Map A: Q3 value={q3_a:.4f}, Valid mask: {'YES' if valid_q3_a else 'NO'}")
+                        print(f"  Map B: Q3 value={q3_b:.4f}, Valid mask: {'YES' if valid_q3_b else 'NO'}")
                     
                     if swap_ytrue_ypred and metric_type in ['r2', 'residual', 'max_residual', 'min_residual']:
                         y_true = map_b_flat
@@ -584,7 +826,7 @@ if __name__ == '__main__':
                         y_true_2d = map_a
                         y_pred_2d = map_b
                     
-                    # Original metric
+                    # Original metric calculation
                     if metric_type == 'pearson':
                         metric_value = calculate_pearson(y_true, y_pred, file_a.name)
                     elif metric_type == 'r2':
@@ -606,18 +848,18 @@ if __name__ == '__main__':
                     elif metric_type == 'huber':
                         metric_value = calculate_huber_loss(y_true, y_pred, huber_delta)
                     elif metric_type == 'ssim':
-                        metric_value = calculate_ssim(y_true_2d, y_pred_2d)
+                        metric_value = calculate_ssim(y_true_2d, y_pred_2d, verbose=file_verbose)
+                    
+                    if file_verbose:
+                        print(f"{metric_type.upper()} calculation result: {metric_value:.4f}")
                     
                     # Q3-based metrics
                     metric_q3_a = np.nan
                     metric_q3_b = np.nan
+                    
+                    # SSIM with Q3 masks requires special handling
                     if valid_q3_a and metric_type == 'ssim':
-                        # Check valid pixels after masking
-                        y_true_masked = np.where(mask_a_q3, y_true_2d, np.nan)
-                        y_pred_masked = np.where(mask_a_q3, y_pred_2d, np.nan)
-                        valid_mask = ~np.isnan(y_true_masked) & ~np.isnan(y_pred_masked)
-                        if valid_mask.sum() >= min_pixels:
-                            metric_q3_a = calculate_ssim(y_true_2d, y_pred_2d, pixel_mask=mask_a_q3)
+                        metric_q3_a = calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_a_q3, verbose=file_verbose)
                     elif valid_q3_a:
                         if metric_type == 'pearson':
                             metric_q3_a = calculate_pearson(y_true, y_pred, file_a.name, pixel_mask=mask_a_q3.flatten())
@@ -641,12 +883,7 @@ if __name__ == '__main__':
                             metric_q3_a = calculate_huber_loss(y_true, y_pred, huber_delta, pixel_mask=mask_a_q3.flatten())
                     
                     if valid_q3_b and metric_type == 'ssim':
-                        # Check valid pixels after masking
-                        y_true_masked = np.where(mask_b_q3, y_true_2d, np.nan)
-                        y_pred_masked = np.where(mask_b_q3, y_pred_2d, np.nan)
-                        valid_mask = ~np.isnan(y_true_masked) & ~np.isnan(y_pred_masked)
-                        if valid_mask.sum() >= min_pixels:
-                            metric_q3_b = calculate_ssim(y_true_2d, y_pred_2d, pixel_mask=mask_b_q3)
+                        metric_q3_b = calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_b_q3, verbose=file_verbose)
                     elif valid_q3_b:
                         if metric_type == 'pearson':
                             metric_q3_b = calculate_pearson(y_true, y_pred, file_a.name, pixel_mask=mask_b_q3.flatten())
@@ -669,6 +906,11 @@ if __name__ == '__main__':
                         elif metric_type == 'huber':
                             metric_q3_b = calculate_huber_loss(y_true, y_pred, huber_delta, pixel_mask=mask_b_q3.flatten())
                     
+                    # Display Q3 metric results in verbose mode
+                    if file_verbose:
+                        print(f"{metric_type.upper()} with Q3 A mask: {metric_q3_a:.4f}")
+                        print(f"{metric_type.upper()} with Q3 B mask: {metric_q3_b:.4f}")
+                    
                     if verify_stats and not np.isnan(stats['min_both']) and not np.isnan(stats['max_both']):
                         both_maps = np.concatenate([map_a_flat[~np.isnan(map_a_flat)], map_b_flat[~np.isnan(map_b_flat)]])
                         trad_min = np.min(both_maps) if len(both_maps) > 0 else np.nan
@@ -682,10 +924,15 @@ if __name__ == '__main__':
                     except:
                         epoch = np.datetime64('1970-01-01T00:00:00')
                     
-                    if metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber'] and not np.isnan(metric_value) and stats['data_range'] != 0:
-                        value_p = (metric_value / stats['data_range'] * 100)
+                    if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] and not np.isnan(metric_value):
+                        # Métricas já normalizadas
+                        value_p = metric_value * 100
                     elif metric_type == 'mse' and not np.isnan(metric_value) and stats['data_range'] != 0:
+                        # MSE precisa ser normalizado pelo quadrado do data_range
                         value_p = (metric_value / (stats['data_range'] ** 2) * 100)
+                    elif metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber'] and not np.isnan(metric_value) and stats['data_range'] != 0:
+                        # Outras métricas baseadas em erro
+                        value_p = (metric_value / stats['data_range'] * 100)
                     else:
                         value_p = np.nan
                     
@@ -709,10 +956,12 @@ if __name__ == '__main__':
                     if metric_type == 'r2':
                         result_data['pearson_r'] = pearson_r
                     result.append(result_data)
-                    if processed_files % 10 == 0:
+                    if processed_files % 10 == 0 and not verbose:
                         print(f"Processed {processed_files} file pairs, Skipped {skipped_files} files...")
-                except Exception:
+                except Exception as e:
                     skipped_files += 1
+                    if file_verbose:
+                        print(f"ERROR processing {file_a.name}: {str(e)}")
     
     if not result:
         print(f"\nERROR: No valid data pairs found for analysis. Please check dataset directories and {file_extension} files.")
@@ -825,52 +1074,74 @@ if __name__ == '__main__':
                 percent = format_percentage(value, data_range, is_normalized)
                 return f"{value:.4f} ({percent}){suffix}"
             
+            # Formatação padronizada para todos os tipos de métricas
+            if metric_type in ['pearson', 'r2', 'ssim', 'cosine']:
+                # Métricas já são normalizadas (entre -1 e 1 ou 0 e 1)
+                metric_percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
+                percent_suffix = "%"
+                is_normalized = True
+            elif metric_type == 'mse' and not np.isnan(metric_value) and mean_data_range != 0:
+                # MSE precisa ser normalizado pelo quadrado do data_range
+                metric_percent = (metric_value / (mean_data_range ** 2) * 100)
+                percent_suffix = "% of squared data range"
+                is_normalized = False
+            elif metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber'] and not np.isnan(metric_value) and mean_data_range != 0:
+                # Outras métricas baseadas em erro, calcular como % do data_range
+                metric_percent = (metric_value / mean_data_range * 100)
+                percent_suffix = "% of data range"
+                is_normalized = False
+            else:
+                metric_percent = np.nan
+                percent_suffix = "%"
+                is_normalized = False
+            
+            # Formatando a exibição da métrica com porcentagem
+            percent_display = f"({metric_percent:.2f}{percent_suffix})" if not np.isnan(metric_percent) else "(NaN%)"
+            
             if metric_type == 'pearson':
-                print(f'Average Pearson Correlation: {format_metric_with_percent(metric_value, is_normalized=True, suffix=" (Fisher Z applied)")}')
+                print(f'Average Pearson Correlation: {metric_value:.4f} {percent_display} (Fisher Z applied)')
                 print(f'Average Pearson (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
                 print(f'Average Pearson (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}')
             elif metric_type == 'r2':
-                print(f'Average R² Score: {format_metric_with_percent(metric_value, is_normalized=True, suffix=" (Fisher Z applied on Pearson r)")}')
+                print(f'Average R² Score: {metric_value:.4f} {percent_display} (Fisher Z applied on Pearson r)')
                 print(f'Average R² (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
                 print(f'Average R² (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}')
             elif metric_type == 'ssim':
-                print(f'Average Structural Similarity Index: {format_metric_with_percent(metric_value, is_normalized=True)}')
-                print(f'Average SSIM (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
-                print(f'Average Structural Similarity Index: {format_metric_with_percent(metric_value, is_normalized=True)}')
+                print(f'Average Structural Similarity Index: {metric_value:.4f} {percent_display}')
                 print(f'Average SSIM (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
                 print(f'Average SSIM (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}')
             elif metric_type == 'cosine':
-                print(f'Average Cosine Similarity: {format_metric_with_percent(metric_value, is_normalized=True)}')
+                print(f'Average Cosine Similarity: {metric_value:.4f} {percent_display}')
                 print(f'Average Cosine (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
                 print(f'Average Cosine (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}')
             elif metric_type == 'rmse':
-                print(f'Average RMSE: {format_metric_with_percent(metric_value, mean_data_range)}')
+                print(f'Average RMSE: {metric_value:.4f} {percent_display}')
                 print(f'Average RMSE (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
                 print(f'Average RMSE (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'mse':
-                print(f'Average Mean Squared Error: {format_metric_with_percent(metric_value, mean_data_range)}')
-                print(f'Average MSE (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
-                print(f'Average MSE (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
+                print(f'Average Mean Squared Error: {metric_value:.4f} {percent_display}')
+                print(f'Average MSE (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range**2)}')
+                print(f'Average MSE (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range**2)}')
             elif metric_type == 'mae':
-                print(f'Average Mean Absolute Error: {format_metric_with_percent(metric_value, mean_data_range)}')
+                print(f'Average Mean Absolute Error: {metric_value:.4f} {percent_display}')
                 print(f'Average MAE (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
                 print(f'Average MAE (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'residual':
-                print(f'Average Mean Absolute Residual Error: {format_metric_with_percent(metric_value, mean_data_range)}')
+                print(f'Average Mean Absolute Residual Error: {metric_value:.4f} {percent_display}')
                 print(f'Average Residual (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
                 print(f'Average Residual (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'max_residual':
-                print(f'Average Maximum Residual Error: {format_metric_with_percent(metric_value, mean_data_range)}')
+                print(f'Average Maximum Residual Error: {metric_value:.4f} {percent_display}')
                 print(f'Average Max Residual (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
                 print(f'Average Max Residual (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'min_residual':
                 suffix = f" ({min_residual_percentile}th percentile)"
-                print(f'Average Minimum Residual Error{suffix}: {format_metric_with_percent(metric_value, mean_data_range)}')
+                print(f'Average Minimum Residual Error{suffix}: {metric_value:.4f} {percent_display}')
                 print(f'Average Min Residual (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
                 print(f'Average Min Residual (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'huber':
                 suffix = f" (delta={huber_delta})"
-                print(f'Average Huber Loss{suffix}: {format_metric_with_percent(metric_value, mean_data_range)}')
+                print(f'Average Huber Loss{suffix}: {metric_value:.4f} {percent_display}')
                 print(f'Average Huber Loss (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
                 print(f'Average Huber Loss (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             
@@ -878,7 +1149,6 @@ if __name__ == '__main__':
             comp_key = f"{dataset_a} x {dataset_b}"
             top_maps_by_comparison[comp_key] = sorted_maps
             
-            # Agora todos são ordenados por percentual
             print(f"\nTop {top_n} Maps with Best {metric_type.upper()} Values (Sorted by Percentage):")
             print("-" * 120)
             for idx, row in enumerate(sorted_maps.itertuples(), 1):
@@ -891,6 +1161,8 @@ if __name__ == '__main__':
                 if hasattr(row, f'{metric_type}_p') and not np.isnan(getattr(row, f'{metric_type}_p')):
                     if is_normalized:
                         metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
+                    elif metric_type == 'mse':
+                        metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of squared data range)"
                     else:
                         metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)"
                 else:
@@ -899,6 +1171,9 @@ if __name__ == '__main__':
                     if is_normalized:
                         percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
                         metric_display = f"{metric_value:.4f} ({percent:.2f}%)" if not np.isnan(percent) else f"{metric_value:.4f} (NaN%)"
+                    elif metric_type == 'mse':
+                        percent = (metric_value / (row.data_range ** 2) * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
+                        metric_display = f"{metric_value:.4f} ({percent:.2f}% of squared data range)" if not np.isnan(percent) else f"{metric_value:.4f} (NaN%)"
                     else:
                         percent = (metric_value / row.data_range * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
                         metric_display = f"{metric_value:.4f} ({percent:.2f}% of data range)" if not np.isnan(percent) else f"{metric_value:.4f} (NaN% of data range)"
@@ -912,6 +1187,11 @@ if __name__ == '__main__':
                     q3_b_percent = q3_b_value * 100 if not np.isnan(q3_b_value) else np.nan
                     q3_a_display = f"{q3_a_value:.4f} ({q3_a_percent:.2f}%)" if not np.isnan(q3_a_value) else 'NaN'
                     q3_b_display = f"{q3_b_value:.4f} ({q3_b_percent:.2f}%)" if not np.isnan(q3_b_value) else 'NaN'
+                elif metric_type == 'mse':
+                    q3_a_percent = (q3_a_value / (row.data_range ** 2) * 100) if not np.isnan(q3_a_value) and row.data_range != 0 else np.nan
+                    q3_b_percent = (q3_b_value / (row.data_range ** 2) * 100) if not np.isnan(q3_b_value) and row.data_range != 0 else np.nan
+                    q3_a_display = f"{q3_a_value:.4f} ({q3_a_percent:.2f}% of squared data range)" if not np.isnan(q3_a_value) else 'NaN'
+                    q3_b_display = f"{q3_b_value:.4f} ({q3_b_percent:.2f}% of squared data range)" if not np.isnan(q3_b_value) else 'NaN'
                 else:
                     q3_a_percent = (q3_a_value / row.data_range * 100) if not np.isnan(q3_a_value) and row.data_range != 0 else np.nan
                     q3_b_percent = (q3_b_value / row.data_range * 100) if not np.isnan(q3_b_value) and row.data_range != 0 else np.nan
@@ -987,7 +1267,7 @@ if __name__ == '__main__':
             avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
             percent = (metric_val / avg_data_range * 100) if not np.isnan(metric_val) and avg_data_range != 0 else np.nan
             percent_suffix = "% of data range"
-    
+        
         percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
         return f"{dataset_name} with average {metric_type} of {metric_val:.4f} {percent_display}"
     
@@ -1033,71 +1313,111 @@ if __name__ == '__main__':
     print(f"Best dataset: {format_dataset_metric(best_dataset[0], best_dataset[1])}")
     print(f"Worst dataset: {format_dataset_metric(worst_dataset[0], worst_dataset[1])}")
     
+    # FIX: Improved dataset ranking section to handle NaN values properly
     print("\nDataset Ranking (from best to worst):")
-    sorted_datasets = sorted(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('-inf'), reverse=higher_is_better)
+    # First handle NaN values to ensure consistent sorting
+    sorted_datasets = [(dataset, avg_val) for dataset, avg_val in dataset_avg_metrics.items()]
     
-    for i, (dataset, avg_val) in enumerate(sorted_datasets, 1):
-        if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
-            percent = avg_val * 100 if not np.isnan(avg_val) else np.nan
-            percent_suffix = "%"
-        elif metric_type == 'mse':
-            # MSE precisa ser normalizado pelo quadrado do data_range
-            data_ranges = df[df['source_a'] == dataset]['data_range'].tolist() + df[df['source_b'] == dataset]['data_range'].tolist()
-            avg_data_range = np.nanmean(data_ranges) if data_ranges else 1.0
-            percent = (avg_val / (avg_data_range ** 2) * 100) if not np.isnan(avg_val) and avg_data_range != 0 else np.nan
-            percent_suffix = "% of squared data range"
-        else:
-            data_ranges = df[df['source_a'] == dataset]['data_range'].tolist() + df[df['source_b'] == dataset]['data_range'].tolist()
-            avg_data_range = np.nanmean(data_ranges) if data_ranges else 1.0
-            percent = (avg_val / avg_data_range * 100) if not np.isnan(avg_val) and avg_data_range != 0 else np.nan
-            percent_suffix = "% of data range"
+    # Sort handling NaN values appropriately
+    if higher_is_better:
+        sorted_datasets.sort(key=lambda x: float('-inf') if np.isnan(x[1]) else x[1], reverse=True)
+    else:
+        sorted_datasets.sort(key=lambda x: float('inf') if np.isnan(x[1]) else x[1], reverse=False)
+    
+    if not sorted_datasets:
+        print("No valid datasets found for ranking.")
+    else:
+        for i, (dataset, avg_val) in enumerate(sorted_datasets, 1):
+            try:
+                if np.isnan(avg_val):
+                    print(f"{i}. {dataset}: NaN (unable to calculate metric)")
+                    continue
+                    
+                if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+                    percent = avg_val * 100
+                    percent_suffix = "%"
+                elif metric_type == 'mse':
+                    data_ranges = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['data_range'].values
+                    avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
+                    percent = (avg_val / (avg_data_range ** 2) * 100) if avg_data_range != 0 else np.nan
+                    percent_suffix = "% of squared data range"
+                else:
+                    data_ranges = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['data_range'].values
+                    avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
+                    percent = (avg_val / avg_data_range * 100) if avg_data_range != 0 else np.nan
+                    percent_suffix = "% of data range"
+
+                percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
+                print(f"{i}. {dataset}: {avg_val:.4f} {percent_display}")
+            except Exception as e:
+                print(f"{i}. {dataset}: Error calculating metric display: {str(e)}")
     
     overall_top_count = 50
 
-print(f"\n===== TOP {overall_top_count} MAPS OVERALL (Sorted by Percentage) =====")
-top_overall = df.sort_values(by=f'{metric_type}_p', ascending=not higher_is_better).head(overall_top_count)
-print("-" * 120)
+    print(f"\n===== TOP {overall_top_count} MAPS OVERALL (Sorted by Percentage) =====")
+    top_overall = df.sort_values(by=f'{metric_type}_p', ascending=not higher_is_better).head(overall_top_count)
+    print("-" * 120)
 
-for idx, row in enumerate(top_overall.itertuples(), 1):
-    file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
-    
-    # Exibição consistente de porcentagem para todas as métricas
-    if hasattr(row, f'{metric_type}_p') and not np.isnan(getattr(row, f'{metric_type}_p')):
-        if metric_type == 'mse':
-            metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of squared data range)"
-        elif metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
-            metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)"
-        else:
-            metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
-    else:
-        metric_value = getattr(row, metric_type)
-        if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
-            percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
-            percent_suffix = "%"
-        elif metric_type == 'mse':
-            percent = (metric_value / (row.data_range ** 2) * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
-            percent_suffix = "% of squared data range"
-        else:
-            percent = (metric_value / row.data_range * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
-            percent_suffix = "% of data range"
+    for idx, row in enumerate(top_overall.itertuples(), 1):
+        file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
         
-        metric_display = f"{metric_value:.4f} ({percent:.2f}{percent_suffix})" if not np.isnan(percent) else f"{metric_value:.4f} (NaN%)"
-    
-    date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
-    
-    print(f"{idx}. Data: {date_str}")
-    print(f"   Comparação: {row.dataset_a} x {row.dataset_b}")
-    print(f"   Arquivos: {file_info}")
-    print(f"   {metric_type.upper()}: {metric_display}")
-    print(f"   {metric_type.upper()} (Q3 Map A, >= {row.q3_a:.4f}): {q3_a_display}")
-    print(f"   {metric_type.upper()} (Q3 Map B, >= {row.q3_b:.4f}): {q3_b_display}")
-    print(f"   Estatísticas do Dataset A:")
-    print(f"     Min: {row.min_a:.4f}, Q1: {row.q1_a:.4f}, Median: {row.median_a:.4f}, Q3: {row.q3_a:.4f}, Mean: {row.mean_a:.4f}, Max: {row.max_a:.4f}")
-    print(f"   Estatísticas do Dataset B:")
-    print(f"     Min: {row.min_b:.4f}, Q1: {row.q1_b:.4f}, Median: {row.median_b:.4f}, Q3: {row.q3_b:.4f}, Mean: {row.mean_b:.4f}, Max: {row.max_b:.4f}")
-    print(f"   Estatísticas Combinadas:")
-    print(f"     Min: {row.min_both:.4f}, Q1: {row.q1_both:.4f}, Median: {row.median_both:.4f}, Q3: {row.q3_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
-    print(f"     Data Range: {row.data_range:.4f}")
-    if idx < len(top_overall):
-        print("-" * 80)
-print("-" * 120)
+        # Exibição consistente de porcentagem para todas as métricas
+        if hasattr(row, f'{metric_type}_p') and not np.isnan(getattr(row, f'{metric_type}_p')):
+            if metric_type == 'mse':
+                metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of squared data range)"
+            elif metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
+                metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)"
+            else:
+                metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
+        else:
+            metric_value = getattr(row, metric_type)
+            if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+                percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
+                percent_suffix = "%"
+            elif metric_type == 'mse':
+                percent = (metric_value / (row.data_range ** 2) * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
+                percent_suffix = "% of squared data range"
+            else:
+                percent = (metric_value / row.data_range * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
+                percent_suffix = "% of data range"
+            
+            metric_display = f"{metric_value:.4f} ({percent:.2f}{percent_suffix})" if not np.isnan(percent) else f"{metric_value:.4f} (NaN%)"
+        
+        # Formatar os valores Q3 com porcentagem
+        q3_a_value = getattr(row, f'{metric_type}_q3_a')
+        q3_b_value = getattr(row, f'{metric_type}_q3_b')
+        
+        if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+            q3_a_percent = q3_a_value * 100 if not np.isnan(q3_a_value) else np.nan
+            q3_b_percent = q3_b_value * 100 if not np.isnan(q3_b_value) else np.nan
+            q3_a_display = f"{q3_a_value:.4f} ({q3_a_percent:.2f}%)" if not np.isnan(q3_a_value) else 'NaN'
+            q3_b_display = f"{q3_b_value:.4f} ({q3_b_percent:.2f}%)" if not np.isnan(q3_b_value) else 'NaN'
+        elif metric_type == 'mse':
+            q3_a_percent = (q3_a_value / (row.data_range ** 2) * 100) if not np.isnan(q3_a_value) and row.data_range != 0 else np.nan
+            q3_b_percent = (q3_b_value / (row.data_range ** 2) * 100) if not np.isnan(q3_b_value) and row.data_range != 0 else np.nan
+            q3_a_display = f"{q3_a_value:.4f} ({q3_a_percent:.2f}% of squared data range)" if not np.isnan(q3_a_value) else 'NaN'
+            q3_b_display = f"{q3_b_value:.4f} ({q3_b_percent:.2f}% of squared data range)" if not np.isnan(q3_b_value) else 'NaN'
+        else:
+            q3_a_percent = (q3_a_value / row.data_range * 100) if not np.isnan(q3_a_value) and row.data_range != 0 else np.nan
+            q3_b_percent = (q3_b_value / row.data_range * 100) if not np.isnan(q3_b_value) and row.data_range != 0 else np.nan
+            q3_a_display = f"{q3_a_value:.4f} ({q3_a_percent:.2f}% of data range)" if not np.isnan(q3_a_value) else 'NaN'
+            q3_b_display = f"{q3_b_value:.4f} ({q3_b_percent:.2f}% of data range)" if not np.isnan(q3_b_value) else 'NaN'
+        
+        date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
+        
+        print(f"{idx}. Data: {date_str}")
+        print(f"   Comparação: {row.dataset_a} x {row.dataset_b}")
+        print(f"   Arquivos: {file_info}")
+        print(f"   {metric_type.upper()}: {metric_display}")
+        print(f"   {metric_type.upper()} (Q3 Map A, >= {row.q3_a:.4f}): {q3_a_display}")
+        print(f"   {metric_type.upper()} (Q3 Map B, >= {row.q3_b:.4f}): {q3_b_display}")
+        print(f"   Estatísticas do Dataset A:")
+        print(f"     Min: {row.min_a:.4f}, Q1: {row.q1_a:.4f}, Median: {row.median_a:.4f}, Q3: {row.q3_a:.4f}, Mean: {row.mean_a:.4f}, Max: {row.max_a:.4f}")
+        print(f"   Estatísticas do Dataset B:")
+        print(f"     Min: {row.min_b:.4f}, Q1: {row.q1_b:.4f}, Median: {row.median_b:.4f}, Q3: {row.q3_b:.4f}, Mean: {row.mean_b:.4f}, Max: {row.max_b:.4f}")
+        print(f"   Estatísticas Combinadas:")
+        print(f"     Min: {row.min_both:.4f}, Q1: {row.q1_both:.4f}, Median: {row.median_both:.4f}, Q3: {row.q3_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
+        print(f"     Data Range: {row.data_range:.4f}")
+        if idx < len(top_overall):
+            print("-" * 80)
+    print("-" * 120)
