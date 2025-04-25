@@ -812,7 +812,6 @@ if __name__ == '__main__':
         percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
         print(f"{i}. {dataset}: {avg_val:.4f} {percent_display}")
     
-    # Forçar a exibição de 50 mapas para o TOP OVERALL, independente do valor de top_n
 overall_top_count = 50
 
 print(f"\n===== TOP {overall_top_count} MAPS OVERALL (Sorted by Percentage) =====")
