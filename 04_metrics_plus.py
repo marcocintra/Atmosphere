@@ -548,12 +548,15 @@ if __name__ == '__main__':
                     except:
                         epoch = np.datetime64('1970-01-01T00:00:00')
                     
-                    if metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber'] and not np.isnan(metric_value) and stats['data_range'] != 0:
-                        # These metrics are in the original units
-                        value_p = (metric_value / stats['data_range'] * 100)
+                    if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] and not np.isnan(metric_value):
+                        # Métricas já normalizadas
+                        value_p = metric_value * 100
                     elif metric_type == 'mse' and not np.isnan(metric_value) and stats['data_range'] != 0:
-                        # MSE is in squared units, so normalize by squared range
+                        # MSE precisa ser normalizado pelo quadrado do data_range
                         value_p = (metric_value / (stats['data_range'] ** 2) * 100)
+                    elif metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber'] and not np.isnan(metric_value) and stats['data_range'] != 0:
+                        # Outras métricas baseadas em erro
+                        value_p = (metric_value / stats['data_range'] * 100)
                     else:
                         value_p = np.nan
                     
@@ -788,13 +791,14 @@ if __name__ == '__main__':
                                 # Métricas já normalizadas
                                 month_percent = month_metric * 100 if not np.isnan(month_metric) else np.nan
                                 percent_suffix = "%"
-                            elif metric_type in ['rmse', 'mse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
-                                # Métricas baseadas em erro
+                            elif metric_type == 'mse' and not np.isnan(month_metric) and mean_data_range != 0:
+                                # MSE precisa ser normalizado pelo quadrado do data_range
+                                month_percent = (month_metric / (mean_data_range ** 2) * 100)
+                                percent_suffix = "% of squared data range"
+                            elif metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
+                                # Outras métricas baseadas em erro
                                 month_percent = (month_metric / mean_data_range * 100) if not np.isnan(month_metric) and mean_data_range != 0 else np.nan
                                 percent_suffix = "% of data range"
-                            else:
-                                month_percent = np.nan
-                                percent_suffix = "%"
 
                             percent_display = f"({month_percent:.2f}{percent_suffix})" if not np.isnan(month_percent) else "(NaN%)"
                             print(f'{month_name}: {metric_type.upper()} = {month_metric:.4f} {percent_display}')
@@ -804,8 +808,13 @@ if __name__ == '__main__':
         if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
             percent = metric_val * 100 if not np.isnan(metric_val) else np.nan
             percent_suffix = "%"
+        elif metric_type == 'mse':
+            # MSE precisa ser normalizado pelo quadrado do data_range
+            data_ranges = df[(df['source_a'] == dataset_name) | (df['source_b'] == dataset_name)]['data_range'].values
+            avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
+            percent = (metric_val / (avg_data_range ** 2) * 100) if not np.isnan(metric_val) and avg_data_range != 0 else np.nan
+            percent_suffix = "% of squared data range"
         else:
-            # Uso da média dos data_range para este dataset
             data_ranges = df[(df['source_a'] == dataset_name) | (df['source_b'] == dataset_name)]['data_range'].values
             avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
             percent = (metric_val / avg_data_range * 100) if not np.isnan(metric_val) and avg_data_range != 0 else np.nan
@@ -863,8 +872,13 @@ if __name__ == '__main__':
         if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
             percent = avg_val * 100 if not np.isnan(avg_val) else np.nan
             percent_suffix = "%"
+        elif metric_type == 'mse':
+            # MSE precisa ser normalizado pelo quadrado do data_range
+            data_ranges = df[df['source_a'] == dataset]['data_range'].tolist() + df[df['source_b'] == dataset]['data_range'].tolist()
+            avg_data_range = np.nanmean(data_ranges) if data_ranges else 1.0
+            percent = (avg_val / (avg_data_range ** 2) * 100) if not np.isnan(avg_val) and avg_data_range != 0 else np.nan
+            percent_suffix = "% of squared data range"
         else:
-            # Aproximação usando os valores médios dos data_range
             data_ranges = df[df['source_a'] == dataset]['data_range'].tolist() + df[df['source_b'] == dataset]['data_range'].tolist()
             avg_data_range = np.nanmean(data_ranges) if data_ranges else 1.0
             percent = (avg_val / avg_data_range * 100) if not np.isnan(avg_val) and avg_data_range != 0 else np.nan
@@ -884,24 +898,23 @@ for idx, row in enumerate(top_overall.itertuples(), 1):
     
     # Exibição consistente de porcentagem para todas as métricas
     if hasattr(row, f'{metric_type}_p') and not np.isnan(getattr(row, f'{metric_type}_p')):
-        # Se a métrica já tem um atributo de porcentagem calculado
-        if metric_type in ['rmse', 'mse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
+        if metric_type == 'mse':
+            metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of squared data range)"
+        elif metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
             metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)"
         else:
             metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
     else:
-        # Se precisamos calcular a porcentagem agora
         metric_value = getattr(row, metric_type)
         if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
-            # Métricas normalizadas
             percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
             percent_suffix = "%"
+        elif metric_type == 'mse':
+            percent = (metric_value / (row.data_range ** 2) * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
+            percent_suffix = "% of squared data range"
         else:
-            # Métricas baseadas em erro
             percent = (metric_value / row.data_range * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
             percent_suffix = "% of data range"
-        
-        metric_display = f"{metric_value:.4f} ({percent:.2f}{percent_suffix})" if not np.isnan(percent) else f"{metric_value:.4f} (NaN%)"
     
     date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
     
