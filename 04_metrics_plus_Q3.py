@@ -955,18 +955,18 @@ if __name__ == '__main__':
                             else:
                                 month_metric = np.nanmean(np.abs(month_data[metric_type])) if metric_type == 'residual' else np.nanmean(month_data[metric_type])
                             
-                            # Exibindo métrica mensal com porcentagem
                             if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
                                 # Métricas já normalizadas
                                 month_percent = month_metric * 100 if not np.isnan(month_metric) else np.nan
                                 percent_suffix = "%"
-                            elif metric_type in ['rmse', 'mse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
-                                # Métricas baseadas em erro
+                            elif metric_type == 'mse' and not np.isnan(month_metric) and mean_data_range != 0:
+                                # MSE precisa ser normalizado pelo quadrado do data_range
+                                month_percent = (month_metric / (mean_data_range ** 2) * 100)
+                                percent_suffix = "% of squared data range"
+                            elif metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
+                                # Outras métricas baseadas em erro
                                 month_percent = (month_metric / mean_data_range * 100) if not np.isnan(month_metric) and mean_data_range != 0 else np.nan
                                 percent_suffix = "% of data range"
-                            else:
-                                month_percent = np.nan
-                                percent_suffix = "%"
 
                             percent_display = f"({month_percent:.2f}{percent_suffix})" if not np.isnan(month_percent) else "(NaN%)"
                             print(f'{month_name}: {metric_type.upper()} = {month_metric:.4f} {percent_display}')
