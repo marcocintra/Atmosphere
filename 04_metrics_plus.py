@@ -548,13 +548,12 @@ if __name__ == '__main__':
                     except:
                         epoch = np.datetime64('1970-01-01T00:00:00')
                     
-                    # Cálculo melhorado de porcentagem para todas as métricas
-                    if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] and not np.isnan(metric_value):
-                        # Métricas já normalizadas
-                        value_p = metric_value * 100
-                    elif metric_type in ['rmse', 'mse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber'] and not np.isnan(metric_value) and stats['data_range'] != 0:
-                        # Métricas baseadas em erro
+                    if metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber'] and not np.isnan(metric_value) and stats['data_range'] != 0:
+                        # These metrics are in the original units
                         value_p = (metric_value / stats['data_range'] * 100)
+                    elif metric_type == 'mse' and not np.isnan(metric_value) and stats['data_range'] != 0:
+                        # MSE is in squared units, so normalize by squared range
+                        value_p = (metric_value / (stats['data_range'] ** 2) * 100)
                     else:
                         value_p = np.nan
                     
