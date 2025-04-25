@@ -592,11 +592,11 @@ if __name__ == '__main__':
             # Exibindo estatísticas gerais
             print("\nStatistics for All Data:")
             print("Dataset A:")
-            print(f"  Min: {mean_min_a:.4f}, Median: {mean_median_a:.4f}, Mean: {mean_mean_a:.4f}, Max: {mean_max_a:.4f}")
+            print(f"  Min: {mean_min_a:.4f}, Q1: {selection['q1_a'].mean():.4f}, Median: {mean_median_a:.4f}, Q3: {selection['q3_a'].mean():.4f}, Mean: {mean_mean_a:.4f}, Max: {mean_max_a:.4f}")
             print("Dataset B:")
-            print(f"  Min: {mean_min_b:.4f}, Median: {mean_median_b:.4f}, Mean: {mean_mean_b:.4f}, Max: {mean_max_b:.4f}")
+            print(f"  Min: {mean_min_b:.4f}, Q1: {selection['q1_b'].mean():.4f}, Median: {mean_median_b:.4f}, Q3: {selection['q3_b'].mean():.4f}, Mean: {mean_mean_b:.4f}, Max: {mean_max_b:.4f}")
             print("Combined:")
-            print(f"  Min: {mean_min_both:.4f}, Median: {mean_median_both:.4f}, Mean: {mean_mean_both:.4f}, Max: {mean_max_both:.4f}")
+            print(f"  Min: {mean_min_both:.4f}, Q1: {selection['q1_both'].mean():.4f}, Median: {mean_median_both:.4f}, Q3: {selection['q3_both'].mean():.4f}, Mean: {mean_mean_both:.4f}, Max: {mean_max_both:.4f}")
             print(f"  Data Range: {mean_data_range:.4f}")
             
             # Calculando porcentagem padronizada para qualquer métrica
@@ -686,11 +686,11 @@ if __name__ == '__main__':
                 print(f"   Arquivos: {file_info}")
                 print(f"   {metric_type.upper()}: {metric_display}")
                 print(f"   Estatísticas do Dataset A:")
-                print(f"     Min: {row.min_a:.4f}, Median: {row.median_a:.4f}, Mean: {row.mean_a:.4f}, Max: {row.max_a:.4f}")
+                print(f"     Min: {row.min_a:.4f}, Q1: {row.q1_a:.4f}, Median: {row.median_a:.4f}, Q3: {row.q3_a:.4f}, Mean: {row.mean_a:.4f}, Max: {row.max_a:.4f}")
                 print(f"   Estatísticas do Dataset B:")
-                print(f"     Min: {row.min_b:.4f}, Median: {row.median_b:.4f}, Mean: {row.mean_b:.4f}, Max: {row.max_b:.4f}")
+                print(f"     Min: {row.min_b:.4f}, Q1: {row.q1_b:.4f}, Median: {row.median_b:.4f}, Q3: {row.q3_b:.4f}, Mean: {row.mean_b:.4f}, Max: {row.max_b:.4f}")
                 print(f"   Estatísticas Combinadas:")
-                print(f"     Min: {row.min_both:.4f}, Median: {row.median_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
+                print(f"     Min: {row.min_both:.4f}, Q1: {row.q1_both:.4f}, Median: {row.median_both:.4f}, Q3: {row.q3_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
                 print(f"     Data Range: {row.data_range:.4f}")
                 
                 # Inserir separador entre mapas, exceto para o último
@@ -844,11 +844,11 @@ for idx, row in enumerate(top_overall.itertuples(), 1):
     print(f"   Arquivos: {file_info}")
     print(f"   {metric_type.upper()}: {metric_display}")
     print(f"   Estatísticas do Dataset A:")
-    print(f"     Min: {row.min_a:.4f}, Median: {row.median_a:.4f}, Mean: {row.mean_a:.4f}, Max: {row.max_a:.4f}")
+    print(f"     Min: {row.min_a:.4f}, Q1: {row.q1_a:.4f}, Median: {row.median_a:.4f}, Q3: {row.q3_a:.4f}, Mean: {row.mean_a:.4f}, Max: {row.max_a:.4f}")
     print(f"   Estatísticas do Dataset B:")
-    print(f"     Min: {row.min_b:.4f}, Median: {row.median_b:.4f}, Mean: {row.mean_b:.4f}, Max: {row.max_b:.4f}")
+    print(f"     Min: {row.min_b:.4f}, Q1: {row.q1_b:.4f}, Median: {row.median_b:.4f}, Q3: {row.q3_b:.4f}, Mean: {row.mean_b:.4f}, Max: {row.max_b:.4f}")
     print(f"   Estatísticas Combinadas:")
-    print(f"     Min: {row.min_both:.4f}, Median: {row.median_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
+    print(f"     Min: {row.min_both:.4f}, Q1: {row.q1_both:.4f}, Median: {row.median_both:.4f}, Q3: {row.q3_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
     print(f"     Data Range: {row.data_range:.4f}")
     if idx < len(top_overall):
         print("-" * 80)
