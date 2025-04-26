@@ -7,6 +7,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 from skimage.metrics import structural_similarity as ssim
 from skimage.io import imread
 import warnings
+import traceback
 
 warnings.filterwarnings('ignore')
 
@@ -391,6 +392,10 @@ if __name__ == '__main__':
                         help='Swap y_true and y_pred for R² and residual calculations')
     parser.add_argument('--normalize-residuals', action='store_true',
                         help='Normalize y_pred for residual calculations')
+    parser.add_argument('--debug-skipped', action='store_true',
+                        help='Enable detailed logging for skipped files')
+    parser.add_argument('--debug-file', type=str, default="debug_missing_files.log",
+                        help='File to log debug information about missing files')
     args = parser.parse_args()
     
     if args.check_existing:
@@ -410,6 +415,8 @@ if __name__ == '__main__':
     filter_mapas3 = args.filter_mapas3
     swap_ytrue_ypred = args.swap_ytrue_ypred
     normalize_residuals = args.normalize_residuals
+    debug_skipped = args.debug_skipped
+    debug_file = args.debug_file
     
     higher_is_better = metric_type in ['pearson', 'r2', 'cosine', 'ssim']
     
@@ -418,9 +425,6 @@ if __name__ == '__main__':
             'mapas1_embrace_2022_2024_0800',
             'mapas1_embrace_2022_2024_1600',
             'mapas1_embrace_2022_2024_2000_2200_0000_0200_0400'
-            # 'mapas3_embrace_2024_0800_30m',
-            # 'mapas3_embrace_2024_1600_30m',
-            # 'mapas3_embrace_2024_2000_0400_30m'
         ],
         'igs': [
             'mapas1_igs_2022_2024_0800',
@@ -437,9 +441,6 @@ if __name__ == '__main__':
             'mapas2_maggia_2022_2024_0800',
             'mapas2_maggia_2022_2024_1600',
             'mapas2_maggia_2022_2024_2000_2200_0000_0200_0400'
-            # 'mapas3_maggia_2024_0800_30m',
-            # 'mapas3_maggia_2024_1600_30m',
-            # 'mapas3_maggia_2024_2000_0400_30m'
         ],
         'nagoya': [
             'mapas1_nagoya_2022_2024_0800',
@@ -448,9 +449,6 @@ if __name__ == '__main__':
             'mapas2_nagoya_2022_2024_0800',
             'mapas2_nagoya_2022_2024_1600',
             'mapas2_nagoya_2022_2024_2000_2200_0000_0200_0400'
-            # 'mapas3_nagoya_2024_0800_30m',
-            # 'mapas3_nagoya_2024_1600_30m',
-            # 'mapas3_nagoya_2024_2000_0400_30m'
         ]
     }
     
@@ -499,6 +497,17 @@ if __name__ == '__main__':
     skipped_files = 0
     result = []
     
+    # Dicionários para rastrear arquivos pulados
+    skipped_files_log = defaultdict(list)  # Para registrar arquivos pulados
+    missing_files_by_pair = defaultdict(list)  # Para registrar arquivos ausentes por par
+    error_files_by_pair = defaultdict(list)  # Para registrar erros por par
+    
+    # Abrir arquivo de log se debug está ativado
+    if debug_skipped:
+        with open(debug_file, 'w') as f:
+            f.write("# DEBUG LOG FOR MISSING FILES\n")
+            f.write(f"# Metric: {metric_type}, Dataset suffix: {dataset_suffix}\n\n")
+    
     for comparison in comparisons:
         source_a, source_b = comparison
         if not datasets[source_a] or not datasets[source_b]:
@@ -520,6 +529,7 @@ if __name__ == '__main__':
         for dataset_a, dataset_b in valid_pairs:
             dir_a = base_dir / dataset_a
             dir_b = base_dir / dataset_b
+            pair_key = f"{source_a} x {source_b}"
             
             files_a = sorted(list(dir_a.glob(file_extension)))
             if not files_a:
@@ -528,10 +538,26 @@ if __name__ == '__main__':
             print(f"\nProcessing {dataset_a} x {dataset_b}")
             print(f"Found {len(files_a)} {file_extension} files in {dataset_a}")
             
+            # Contadores específicos para este par
+            pair_processed = 0
+            pair_skipped = 0
+            
+            # Log detailed information if debug is enabled
+            if debug_skipped:
+                with open(debug_file, 'a') as f:
+                    f.write(f"\n=== Processing {dataset_a} x {dataset_b} ===\n")
+                    f.write(f"Found {len(files_a)} files in {dataset_a}\n")
+            
             for file_a in files_a:
                 file_b = dir_b / file_a.name
                 if not file_b.exists():
                     skipped_files += 1
+                    pair_skipped += 1
+                    missing_files_by_pair[pair_key].append(file_a.name)
+                    if debug_skipped:
+                        with open(debug_file, 'a') as f:
+                            f.write(f"MISSING: {file_a.name} does not exist in {dataset_b}\n")
+                        print(f"SKIP: File {file_a.name} does not exist in {dataset_b}")
                     continue
                 
                 try:
@@ -539,6 +565,12 @@ if __name__ == '__main__':
                     map_b = load_image(file_b)
                     if map_a is None or map_b is None:
                         skipped_files += 1
+                        pair_skipped += 1
+                        error_files_by_pair[pair_key].append(f"{file_a.name} - Failed to load image")
+                        if debug_skipped:
+                            with open(debug_file, 'a') as f:
+                                f.write(f"LOAD ERROR: Failed to load {file_a.name}\n")
+                            print(f"SKIP: Failed to load {file_a.name}")
                         continue
                     
                     map_a = np.nan_to_num(map_a, nan=np.nan)
@@ -547,6 +579,7 @@ if __name__ == '__main__':
                     map_b_flat = map_b.flatten()
                     
                     processed_files += 1
+                    pair_processed += 1
                     stats = calculate_strict_stats(map_a, map_b)
                     
                     if swap_ytrue_ypred and metric_type in ['r2', 'residual', 'max_residual', 'min_residual']:
@@ -620,10 +653,20 @@ if __name__ == '__main__':
                     if metric_type == 'r2':
                         result_data['pearson_r'] = pearson_r
                     result.append(result_data)
-                    if processed_files % 10 == 0:
-                        print(f"Processed {processed_files} file pairs, Skipped {skipped_files} files...")
-                except Exception:
+                    
+                except Exception as e:
                     skipped_files += 1
+                    pair_skipped += 1
+                    error_msg = str(e)
+                    error_files_by_pair[pair_key].append(f"{file_a.name} - {error_msg[:100]}")
+                    if debug_skipped:
+                        with open(debug_file, 'a') as f:
+                            f.write(f"ERROR: {file_a.name}: {error_msg}\n")
+                            f.write(f"{traceback.format_exc()}\n")
+                        print(f"ERROR processing {file_a.name}: {error_msg}")
+                        traceback.print_exc()
+            
+            print(f"For pair {pair_key}: Processed {pair_processed}, Skipped {pair_skipped}")
     
     if not result:
         print(f"\nERROR: No valid data pairs found for analysis. Please check dataset directories and {file_extension} files.")
@@ -636,7 +679,36 @@ if __name__ == '__main__':
     if 'datetime' in df.columns:
         df['datetime'] = pd.to_datetime(df['datetime'])
         df.sort_values('datetime', inplace=True)
+
+    # Adicionar análise detalhada de arquivos faltantes
+    print("\n===== MISSING FILES ANALYSIS =====")
+    total_missing = 0
+    for pair, missing_files in missing_files_by_pair.items():
+        if missing_files:
+            print(f"\n{pair}: {len(missing_files)} missing files")
+            total_missing += len(missing_files)
+            if debug_skipped:
+                for i, filename in enumerate(missing_files[:10], 1):
+                    print(f"  {i}. {filename}")
+                if len(missing_files) > 10:
+                    print(f"  ... and {len(missing_files) - 10} more files.")
     
+    print("\n===== ERROR FILES ANALYSIS =====")
+    total_errors = 0
+    for pair, error_files in error_files_by_pair.items():
+        if error_files:
+            print(f"\n{pair}: {len(error_files)} files with errors")
+            total_errors += len(error_files)
+            if debug_skipped:
+                for i, error_info in enumerate(error_files[:10], 1):
+                    print(f"  {i}. {error_info}")
+                if len(error_files) > 10:
+                    print(f"  ... and {len(error_files) - 10} more files with errors.")
+    
+    print(f"\nTotal missing files across all pairs: {total_missing}")
+    print(f"Total files with errors across all pairs: {total_errors}")
+    
+    # Continuar com o processamento normal
     dataset_metrics = defaultdict(list)
     dataset_total_metrics = defaultdict(float)
     dataset_count = defaultdict(int)
@@ -960,7 +1032,7 @@ if __name__ == '__main__':
             else:
                 dataset_percentages[dataset] = np.nan
     
-        # Find best and worst by percentage, not raw value
+    # Find best and worst by percentage, not raw value
     if higher_is_better:
         best_dataset_name = max(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('-inf'))[0]
         worst_dataset_name = min(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'))[0]
@@ -1140,16 +1212,24 @@ if __name__ == '__main__':
             temporal_data.append(monthly_stats)
             
         if temporal_data:
-            temporal_df = pd.concat(temporal_data)
-            temporal_file = f'temporal_analysis_{metric_type}.csv'
-            temporal_df.to_csv(temporal_file, index=False)
-            print(f"Temporal analysis exported to {temporal_file}")
+            try:
+                temporal_df = pd.concat(temporal_data)
+                temporal_file = f'temporal_analysis_{metric_type}.csv'
+                temporal_df.to_csv(temporal_file, index=False)
+                print(f"Temporal analysis exported to {temporal_file}")
+            except Exception as e:
+                print(f"Error in temporal analysis export: {str(e)}")
             
     print(f"\n===== ANALYSIS COMPLETE =====")
     print(f"Total files processed: {processed_files}")
     print(f"Total pairs analyzed: {len(pair_metrics)}")
+    print(f"Total files skipped: {skipped_files}")
+    print(f"Total missing files: {total_missing}")
+    print(f"Total error files: {total_errors}")
     print(f"Results saved to:")
     print(f"  - result_{metric_type}_with_stats.csv (all individual comparisons)")
     print(f"  - pair_metrics_{metric_type}.csv (pair summary metrics)")
     if 'datetime' in df.columns:
         print(f"  - temporal_analysis_{metric_type}.csv (monthly metrics by pair)")
+    if debug_skipped:
+        print(f"  - {debug_file} (detailed log of missing and error files)")
