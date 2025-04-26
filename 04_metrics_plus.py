@@ -322,6 +322,50 @@ def verify_combined_stats(selection):
             inconsistencies += 1
     return inconsistencies == 0
 
+def calculate_pair_stats(df, metric_type):
+    """Calcula estatísticas para cada par de fontes (source_a, source_b)"""
+    pair_stats = defaultdict(list)
+    pair_counts = defaultdict(int)
+    
+    # Agrupa por pares de fontes
+    for _, row in df.iterrows():
+        source_a, source_b = row['source_a'], row['source_b']
+        pair_key = f"{source_a} x {source_b}"
+        
+        # Só adiciona se houver um valor de métrica válido
+        metric_val = row[metric_type]
+        if not np.isnan(metric_val):
+            pair_stats[pair_key].append(metric_val)
+            pair_counts[pair_key] += 1
+    
+    # Calcula métricas resumidas para cada par
+    pair_metrics = {}
+    for pair_key, values in pair_stats.items():
+        if metric_type == 'pearson':
+            z_values = [fisher_z_transform(v) for v in values if not np.isnan(fisher_z_transform(v))]
+            pair_metrics[pair_key] = {
+                'metric_value': fisher_z_inverse(np.mean(z_values)) if z_values else np.nan,
+                'count': pair_counts[pair_key]
+            }
+        elif metric_type == 'r2':
+            # Para R², precisamos dos valores de r original (que é a raiz quadrada do R²)
+            source_a, source_b = pair_key.split(' x ')
+            r_values = df.loc[(df['source_a'] == source_a) & (df['source_b'] == source_b)]['pearson_r'].values
+            valid_r = r_values[~np.isnan(r_values)]
+            z_values = [fisher_z_transform(r) for r in valid_r if not np.isnan(fisher_z_transform(r))]
+            pair_metrics[pair_key] = {
+                'metric_value': fisher_z_inverse(np.mean(z_values)) ** 2 if z_values else np.nan,
+                'count': pair_counts[pair_key]
+            }
+        else:
+            # Para outras métricas, calculamos a média direta
+            pair_metrics[pair_key] = {
+                'metric_value': np.nanmean(values),
+                'count': pair_counts[pair_key]
+            }
+    
+    return pair_metrics
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Calculate metrics between datasets with simplified R² and robust residuals')
     parser.add_argument('--metric', type=str, 
@@ -803,6 +847,61 @@ if __name__ == '__main__':
                             percent_display = f"({month_percent:.2f}{percent_suffix})" if not np.isnan(month_percent) else "(NaN%)"
                             print(f'{month_name}: {metric_type.upper()} = {month_metric:.4f} {percent_display}')
     
+    # NOVA SEÇÃO: ANÁLISE POR PARES DE FONTES
+    print("\n===== PAIRS COMPARISON =====")
+    pair_metrics = calculate_pair_stats(df, metric_type)
+    
+    # Calcular percentuais para cada par
+    for pair_key, data in pair_metrics.items():
+        metric_val = data['metric_value']
+        if np.isnan(metric_val):
+            data['percent'] = np.nan
+            continue
+            
+        # Calcular o percentual baseado no tipo de métrica
+        if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+            data['percent'] = metric_val * 100
+        else:
+            # Para métricas baseadas em erro, precisamos do data_range médio para este par
+            source_a, source_b = pair_key.split(' x ')
+            pair_data_ranges = df[(df['source_a'] == source_a) & (df['source_b'] == source_b)]['data_range'].values
+            avg_data_range = np.nanmean(pair_data_ranges) if len(pair_data_ranges) > 0 else 1.0
+            
+            if metric_type == 'mse' and avg_data_range != 0:
+                data['percent'] = (metric_val / (avg_data_range ** 2) * 100)
+            elif avg_data_range != 0:
+                data['percent'] = (metric_val / avg_data_range * 100)
+            else:
+                data['percent'] = np.nan
+    
+    # Ordenar os pares por sua métrica (maior para menor ou menor para maior dependendo do tipo)
+    sorted_pairs = list(pair_metrics.items())
+    if higher_is_better:
+        sorted_pairs.sort(key=lambda x: float('-inf') if np.isnan(x[1]['percent']) else x[1]['percent'], reverse=True)
+    else:
+        sorted_pairs.sort(key=lambda x: float('inf') if np.isnan(x[1]['percent']) else x[1]['percent'], reverse=False)
+    
+    # Exibir o ranking de pares
+    print("\nPairs Ranking (from best to worst):")
+    for i, (pair_key, data) in enumerate(sorted_pairs, 1):
+        metric_val = data['metric_value']
+        percent = data['percent']
+        count = data['count']
+        
+        if np.isnan(metric_val):
+            print(f"{i}. {pair_key}: NaN (unable to calculate metric) - {count} comparisons")
+            continue
+            
+        if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+            percent_suffix = "%"
+        elif metric_type == 'mse':
+            percent_suffix = "% of squared data range"
+        else:
+            percent_suffix = "% of data range"
+    
+        percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
+        print(f"{i}. {pair_key}: {metric_val:.4f} {percent_display} - {count} comparisons")
+    
     # Função para formatar a exibição de métrica com porcentagem
     def format_dataset_metric(dataset_name, metric_val):
         if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
@@ -842,10 +941,35 @@ if __name__ == '__main__':
         else:
             dataset_avg_metrics[dataset] = np.nan
     
-    best_dataset = max(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('-inf')) if higher_is_better else \
-                   min(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'))
-    worst_dataset = min(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf')) if higher_is_better else \
-                    max(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'))
+    # Calculate percentages for each dataset for proper sorting
+    dataset_percentages = {}
+    for dataset, avg_val in dataset_avg_metrics.items():
+        if np.isnan(avg_val):
+            dataset_percentages[dataset] = np.nan
+            continue
+            
+        if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+            dataset_percentages[dataset] = avg_val * 100
+        else:
+            data_ranges = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['data_range'].values
+            avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
+            if metric_type == 'mse' and avg_data_range != 0:
+                dataset_percentages[dataset] = (avg_val / (avg_data_range ** 2) * 100)
+            elif avg_data_range != 0:
+                dataset_percentages[dataset] = (avg_val / avg_data_range * 100)
+            else:
+                dataset_percentages[dataset] = np.nan
+    
+        # Find best and worst by percentage, not raw value
+    if higher_is_better:
+        best_dataset_name = max(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('-inf'))[0]
+        worst_dataset_name = min(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'))[0]
+    else:
+        best_dataset_name = min(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'))[0]
+        worst_dataset_name = max(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('-inf'))[0]
+    
+    best_dataset = (best_dataset_name, dataset_avg_metrics[best_dataset_name])
+    worst_dataset = (worst_dataset_name, dataset_avg_metrics[worst_dataset_name])
     
     metric_name = {
         'pearson': 'PEARSON CORRELATION',
@@ -862,106 +986,170 @@ if __name__ == '__main__':
     }.get(metric_type, metric_type.upper())
     
     print(f"\n===== DATASET {metric_name} ANALYSIS =====")
-
-# Calculate percentages for each dataset for proper sorting
-dataset_percentages = {}
-for dataset, avg_val in dataset_avg_metrics.items():
-    if np.isnan(avg_val):
-        dataset_percentages[dataset] = np.nan
-        continue
-        
-    if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
-        dataset_percentages[dataset] = avg_val * 100
-    else:
-        data_ranges = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['data_range'].values
-        avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
-        if metric_type == 'mse' and avg_data_range != 0:
-            dataset_percentages[dataset] = (avg_val / (avg_data_range ** 2) * 100)
-        elif avg_data_range != 0:
-            dataset_percentages[dataset] = (avg_val / avg_data_range * 100)
-        else:
-            dataset_percentages[dataset] = np.nan
-
-# Find best and worst by percentage, not raw value
-if higher_is_better:
-    best_dataset_name = max(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('-inf'))[0]
-    worst_dataset_name = min(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'))[0]
-else:
-    best_dataset_name = min(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'))[0]
-    worst_dataset_name = max(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('-inf'))[0]
-
-best_dataset = (best_dataset_name, dataset_avg_metrics[best_dataset_name])
-worst_dataset = (worst_dataset_name, dataset_avg_metrics[worst_dataset_name])
-
-print(f"Best dataset: {format_dataset_metric(best_dataset[0], best_dataset[1])}")
-print(f"Worst dataset: {format_dataset_metric(worst_dataset[0], worst_dataset[1])}")
+    print(f"Best dataset: {format_dataset_metric(best_dataset[0], best_dataset[1])}")
+    print(f"Worst dataset: {format_dataset_metric(worst_dataset[0], worst_dataset[1])}")
     
-print("\nDataset Ranking (from best to worst):")
-# Sort by percentage value, maintaining the (dataset, raw_value) structure but ordering by percentage
-sorted_datasets_with_percent = [(d, v, dataset_percentages[d]) for d, v in dataset_avg_metrics.items()]
-if higher_is_better:
-    sorted_datasets_with_percent.sort(key=lambda x: float('-inf') if np.isnan(x[2]) else x[2], reverse=True)
-else:
-    sorted_datasets_with_percent.sort(key=lambda x: float('inf') if np.isnan(x[2]) else x[2], reverse=False)
-
-# Display the ranking with both raw value and percentage
-for i, (dataset, avg_val, pct) in enumerate(sorted_datasets_with_percent, 1):
-    if np.isnan(avg_val):
-        print(f"{i}. {dataset}: NaN (unable to calculate metric)")
-        continue
-        
-    if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
-        percent_suffix = "%"
-    elif metric_type == 'mse':
-        percent_suffix = "% of squared data range"
+    print("\nDataset Ranking (from best to worst):")
+    # Sort by percentage value, maintaining the (dataset, raw_value) structure but ordering by percentage
+    sorted_datasets_with_percent = [(d, v, dataset_percentages[d]) for d, v in dataset_avg_metrics.items()]
+    if higher_is_better:
+        sorted_datasets_with_percent.sort(key=lambda x: float('-inf') if np.isnan(x[2]) else x[2], reverse=True)
     else:
-        percent_suffix = "% of data range"
-
-    percent_display = f"({pct:.2f}{percent_suffix})" if not np.isnan(pct) else "(NaN%)"
-    print(f"{i}. {dataset}: {avg_val:.4f} {percent_display}")
+        sorted_datasets_with_percent.sort(key=lambda x: float('inf') if np.isnan(x[2]) else x[2], reverse=False)
     
-overall_top_count = 50
-
-print(f"\n===== TOP {overall_top_count} MAPS OVERALL (Sorted by Percentage) =====")
-top_overall = df.sort_values(by=f'{metric_type}_p', ascending=not higher_is_better).head(overall_top_count)
-print("-" * 120)
-
-for idx, row in enumerate(top_overall.itertuples(), 1):
-    file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
-    
-    # Exibição consistente de porcentagem para todas as métricas
-    if hasattr(row, f'{metric_type}_p') and not np.isnan(getattr(row, f'{metric_type}_p')):
-        if metric_type == 'mse':
-            metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of squared data range)"
-        elif metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
-            metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)"
-        else:
-            metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
-    else:
-        metric_value = getattr(row, metric_type)
+    # Display the ranking with both raw value and percentage
+    for i, (dataset, avg_val, pct) in enumerate(sorted_datasets_with_percent, 1):
+        if np.isnan(avg_val):
+            print(f"{i}. {dataset}: NaN (unable to calculate metric)")
+            continue
+            
         if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
-            percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
             percent_suffix = "%"
         elif metric_type == 'mse':
-            percent = (metric_value / (row.data_range ** 2) * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
             percent_suffix = "% of squared data range"
         else:
-            percent = (metric_value / row.data_range * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
             percent_suffix = "% of data range"
     
-    date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
+        percent_display = f"({pct:.2f}{percent_suffix})" if not np.isnan(pct) else "(NaN%)"
+        print(f"{i}. {dataset}: {avg_val:.4f} {percent_display}")
     
-    print(f"{idx}. Data: {date_str}")
-    print(f"   Comparação: {row.dataset_a} x {row.dataset_b}")
-    print(f"   Arquivos: {file_info}")
-    print(f"   {metric_type.upper()}: {metric_display}")
-    print(f"   Estatísticas do Dataset A:")
-    print(f"     Min: {row.min_a:.4f}, Q1: {row.q1_a:.4f}, Median: {row.median_a:.4f}, Q3: {row.q3_a:.4f}, Mean: {row.mean_a:.4f}, Max: {row.max_a:.4f}")
-    print(f"   Estatísticas do Dataset B:")
-    print(f"     Min: {row.min_b:.4f}, Q1: {row.q1_b:.4f}, Median: {row.median_b:.4f}, Q3: {row.q3_b:.4f}, Mean: {row.mean_b:.4f}, Max: {row.max_b:.4f}")
-    print(f"   Estatísticas Combinadas:")
-    print(f"     Min: {row.min_both:.4f}, Q1: {row.q1_both:.4f}, Median: {row.median_both:.4f}, Q3: {row.q3_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
-    print(f"     Data Range: {row.data_range:.4f}")
-    if idx < len(top_overall):
-        print("-" * 80)
-print("-" * 120)
+    overall_top_count = 50
+    
+    print(f"\n===== TOP {overall_top_count} MAPS OVERALL (Sorted by Percentage) =====")
+    top_overall = df.sort_values(by=f'{metric_type}_p', ascending=not higher_is_better).head(overall_top_count)
+    print("-" * 120)
+    
+    for idx, row in enumerate(top_overall.itertuples(), 1):
+        file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
+        
+        # Exibição consistente de porcentagem para todas as métricas
+        if hasattr(row, f'{metric_type}_p') and not np.isnan(getattr(row, f'{metric_type}_p')):
+            if metric_type == 'mse':
+                metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of squared data range)"
+            elif metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
+                metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)"
+            else:
+                metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
+        else:
+            metric_value = getattr(row, metric_type)
+            if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+                percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
+                percent_suffix = "%"
+            elif metric_type == 'mse':
+                percent = (metric_value / (row.data_range ** 2) * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
+                percent_suffix = "% of squared data range"
+            else:
+                percent = (metric_value / row.data_range * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
+                percent_suffix = "% of data range"
+            
+            metric_display = f"{metric_value:.4f} ({percent:.2f}{percent_suffix})" if not np.isnan(percent) else f"{metric_value:.4f} (NaN%)"
+        
+        date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
+        
+        print(f"{idx}. Data: {date_str}")
+        print(f"   Comparação: {row.dataset_a} x {row.dataset_b}")
+        print(f"   Arquivos: {file_info}")
+        print(f"   {metric_type.upper()}: {metric_display}")
+        print(f"   Estatísticas do Dataset A:")
+        print(f"     Min: {row.min_a:.4f}, Q1: {row.q1_a:.4f}, Median: {row.median_a:.4f}, Q3: {row.q3_a:.4f}, Mean: {row.mean_a:.4f}, Max: {row.max_a:.4f}")
+        print(f"   Estatísticas do Dataset B:")
+        print(f"     Min: {row.min_b:.4f}, Q1: {row.q1_b:.4f}, Median: {row.median_b:.4f}, Q3: {row.q3_b:.4f}, Mean: {row.mean_b:.4f}, Max: {row.max_b:.4f}")
+        print(f"   Estatísticas Combinadas:")
+        print(f"     Min: {row.min_both:.4f}, Q1: {row.q1_both:.4f}, Median: {row.median_both:.4f}, Q3: {row.q3_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
+        print(f"     Data Range: {row.data_range:.4f}")
+        if idx < len(top_overall):
+            print("-" * 80)
+    print("-" * 120)
+
+    # NOVA SEÇÃO: ANÁLISE POR FONTE
+    print("\n===== SOURCE ANALYSIS =====")
+    # Para cada fonte, mostre a qualidade média de suas comparações
+    for source in dataset_metrics:
+        source_pairs = [pair for pair in pair_metrics.keys() if source in pair]
+        if not source_pairs:
+            continue
+        
+        print(f"\nSource: {source}")
+        print(f"Average {metric_type}: {dataset_avg_metrics[source]:.4f} ({dataset_percentages[source]:.2f}%)")
+        print("Comparisons:")
+        
+        # Listar todos os pares envolvendo esta fonte
+        for pair in source_pairs:
+            metric_val = pair_metrics[pair]['metric_value']
+            percent = pair_metrics[pair]['percent']
+            count = pair_metrics[pair]['count']
+            
+            if np.isnan(metric_val):
+                print(f"  {pair}: NaN (unable to calculate metric) - {count} comparisons")
+                continue
+                
+            if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+                percent_suffix = "%"
+            elif metric_type == 'mse':
+                percent_suffix = "% of squared data range"
+            else:
+                percent_suffix = "% of data range"
+        
+            percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
+            print(f"  {pair}: {metric_val:.4f} {percent_display} - {count} comparisons")
+    
+    # Exportar métricas de pares para um arquivo CSV
+    pair_data = []
+    for pair_key, data in pair_metrics.items():
+        source_a, source_b = pair_key.split(' x ')
+        pair_data.append({
+            'source_a': source_a,
+            'source_b': source_b,
+            'pair': pair_key,
+            f'{metric_type}_value': data['metric_value'],
+            f'{metric_type}_percent': data['percent'],
+            'comparison_count': data['count']
+        })
+    
+    if pair_data:
+        pair_df = pd.DataFrame(pair_data)
+        output_file = f'pair_metrics_{metric_type}.csv'
+        pair_df.to_csv(output_file, index=False)
+        print(f"\nPair metrics exported to {output_file}")
+        
+    # Exportar resultados de análise temporal por par (se disponível)
+    if 'datetime' in df.columns:
+        print("\n===== TEMPORAL ANALYSIS BY PAIR =====")
+        temporal_data = []
+        
+        for pair_key in pair_metrics:
+            source_a, source_b = pair_key.split(' x ')
+            pair_df = df[(df['source_a'] == source_a) & (df['source_b'] == source_b)]
+            
+            if pair_df.empty:
+                continue
+                
+            # Converter para datetime se não for
+            if not pd.api.types.is_datetime64_any_dtype(pair_df['datetime']):
+                pair_df['datetime'] = pd.to_datetime(pair_df['datetime'])
+                
+            # Agrupar por mês
+            pair_df['year_month'] = pair_df['datetime'].dt.strftime('%Y-%m')
+            monthly_stats = pair_df.groupby('year_month')[metric_type].agg(['mean', 'count', 'std']).reset_index()
+            
+            # Adicionar informações do par
+            monthly_stats['pair'] = pair_key
+            monthly_stats['source_a'] = source_a
+            monthly_stats['source_b'] = source_b
+            
+            temporal_data.append(monthly_stats)
+            
+        if temporal_data:
+            temporal_df = pd.concat(temporal_data)
+            temporal_file = f'temporal_analysis_{metric_type}.csv'
+            temporal_df.to_csv(temporal_file, index=False)
+            print(f"Temporal analysis exported to {temporal_file}")
+            
+    print(f"\n===== ANALYSIS COMPLETE =====")
+    print(f"Total files processed: {processed_files}")
+    print(f"Total pairs analyzed: {len(pair_metrics)}")
+    print(f"Results saved to:")
+    print(f"  - result_{metric_type}_with_stats.csv (all individual comparisons)")
+    print(f"  - pair_metrics_{metric_type}.csv (pair summary metrics)")
+    if 'datetime' in df.columns:
+        print(f"  - temporal_analysis_{metric_type}.csv (monthly metrics by pair)")
