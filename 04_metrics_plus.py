@@ -11,14 +11,60 @@ import traceback
 
 warnings.filterwarnings('ignore')
 
-def calculate_pearson(y_true, y_pred, filename="unknown"):
-    """Calcula a correlação de Pearson, tratando casos especiais."""
+def calculate_pearson(y_true, y_pred, filename="unknown", debug=False):
+    """Calcula a correlação de Pearson, tratando todos os casos especiais."""
+    if debug:
+        print(f"Calculando Pearson para {filename}")
+    
+    # Verificar arrays vazios ou só com NaNs
     if len(y_true) == 0 or len(y_pred) == 0 or np.all(np.isnan(y_true)) or np.all(np.isnan(y_pred)):
+        if debug:
+            print("  Arrays vazios ou só com NaNs")
         return np.nan
+    
+    # Filtrar valores não-NaN
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
-    if np.sum(valid_mask) < 2:
+    valid_count = np.sum(valid_mask)
+    
+    if valid_count < 2:
+        if debug:
+            print("  Menos de 2 pontos válidos")
         return np.nan
-    return np.corrcoef(y_true[valid_mask], y_pred[valid_mask])[0, 1]
+    
+    y_true_valid = y_true[valid_mask]
+    y_pred_valid = y_pred[valid_mask]
+    
+    # Verificar variância zero
+    var_true = np.var(y_true_valid)
+    var_pred = np.var(y_pred_valid)
+    
+    if var_true < 1e-10:
+        if debug:
+            print("  Variância zero em y_true")
+        # Se todos os valores são iguais, a correlação é indefinida
+        # Podemos retornar 0 (sem correlação) ou NaN
+        return 0.0  # Ou np.nan - escolha o que faz mais sentido
+        
+    if var_pred < 1e-10:
+        if debug:
+            print("  Variância zero em y_pred")
+        return 0.0  # Ou np.nan - escolha o que faz mais sentido
+    
+    # Calcular correlação com tratamento robusto
+    try:
+        corr = np.corrcoef(y_true_valid, y_pred_valid)[0, 1]
+        
+        # Verificar se o resultado é válido
+        if np.isnan(corr) or np.isinf(corr):
+            if debug:
+                print(f"  Correlação inválida: {corr}")
+            return np.nan
+            
+        return corr
+    except Exception as e:
+        if debug:
+            print(f"  Erro ao calcular correlação: {str(e)}")
+        return np.nan
 
 def calculate_r2_score(y_true, y_pred, filename="unknown"):
     """Calcula o R² como o quadrado da correlação de Pearson."""
@@ -232,9 +278,12 @@ def calculate_ssim(y_true, y_pred):
         return np.nan
 
 def fisher_z_transform(r):
-    """Transforma correlação r para valor z, evitando valores extremos."""
-    if np.isnan(r) or abs(r) >= 1:
+    """Transforma correlação r para valor z, tratando correlações perfeitas."""
+    if np.isnan(r):
         return np.nan
+    # Mantém correlações perfeitas em vez de transformá-las em NaN
+    if abs(r) >= 1:
+        return 4.0 * np.sign(r)  # Um valor grande com o mesmo sinal de r
     r = np.clip(r, -0.9999, 0.9999)
     return 0.5 * np.log((1 + r) / (1 - r))
 
@@ -430,25 +479,25 @@ if __name__ == '__main__':
             'mapas1_igs_2022_2024_0800',
             'mapas1_igs_2022_2024_1600',
             'mapas1_igs_2022_2024_2000_2200_0000_0200_0400',
-            'mapas2_igs_2022_2024_0800',
-            'mapas2_igs_2022_2024_1600',
-            'mapas2_igs_2022_2024_2000_2200_0000_0200_0400'
+            # 'mapas2_igs_2022_2024_0800',
+            # 'mapas2_igs_2022_2024_1600',
+            # 'mapas2_igs_2022_2024_2000_2200_0000_0200_0400'
         ],
         'maggia': [
             'mapas1_maggia_2022_2024_0800',
             'mapas1_maggia_2022_2024_1600',
             'mapas1_maggia_2022_2024_2000_2200_0000_0200_0400',
-            'mapas2_maggia_2022_2024_0800',
-            'mapas2_maggia_2022_2024_1600',
-            'mapas2_maggia_2022_2024_2000_2200_0000_0200_0400'
+            # 'mapas2_maggia_2022_2024_0800',
+            # 'mapas2_maggia_2022_2024_1600',
+            # 'mapas2_maggia_2022_2024_2000_2200_0000_0200_0400'
         ],
         'nagoya': [
             'mapas1_nagoya_2022_2024_0800',
             'mapas1_nagoya_2022_2024_1600',
             'mapas1_nagoya_2022_2024_2000_2200_0000_0200_0400',
-            'mapas2_nagoya_2022_2024_0800',
-            'mapas2_nagoya_2022_2024_1600',
-            'mapas2_nagoya_2022_2024_2000_2200_0000_0200_0400'
+            # 'mapas2_nagoya_2022_2024_0800',
+            # 'mapas2_nagoya_2022_2024_1600',
+            # 'mapas2_nagoya_2022_2024_2000_2200_0000_0200_0400'
         ]
     }
     
