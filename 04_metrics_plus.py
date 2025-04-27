@@ -416,6 +416,76 @@ def calculate_pair_stats(df, metric_type):
     
     return pair_metrics
 
+# Função para calcular média mensal usando Fisher Z para correlações de Pearson
+def calculate_monthly_pearson_avg(month_data):
+    """Calcula a média de correlação de Pearson para dados mensais usando transformação Fisher Z."""
+    pearson_values = month_data['pearson'].values
+    valid_metrics = pearson_values[~np.isnan(pearson_values)]
+    if len(valid_metrics) == 0:
+        return np.nan
+    
+    z_values = [fisher_z_transform(v) for v in valid_metrics if not np.isnan(fisher_z_transform(v))]
+    if not z_values:
+        return np.nan
+    
+    return fisher_z_inverse(np.mean(z_values))
+
+# Função para calcular média mensal de R² usando Fisher Z para correlações de Pearson
+def calculate_monthly_r2_avg(month_data):
+    """Calcula a média de R² para dados mensais usando transformação Fisher Z nos valores de r."""
+    r_values = month_data['pearson_r'].values
+    valid_r = r_values[~np.isnan(r_values)]
+    if len(valid_r) == 0:
+        return np.nan
+    
+    z_values = [fisher_z_transform(r) for r in valid_r if not np.isnan(fisher_z_transform(r))]
+    if not z_values:
+        return np.nan
+    
+    return fisher_z_inverse(np.mean(z_values)) ** 2
+
+# Função para calcular estatísticas temporais (mensais) com Fisher Z
+def calculate_temporal_stats(df, metric_type):
+    """Calcula estatísticas temporais com suporte a Fisher Z para correlações de Pearson."""
+    if not 'datetime' in df.columns:
+        return pd.DataFrame()
+    
+    # Converter para datetime se não for
+    if not pd.api.types.is_datetime64_any_dtype(df['datetime']):
+        df = df.copy()
+        df['datetime'] = pd.to_datetime(df['datetime'])
+    
+    # Adicionar coluna ano-mês
+    df['year_month'] = df['datetime'].dt.strftime('%Y-%m')
+    
+    # Agrupar por par e ano-mês
+    grouped = df.groupby(['source_a', 'source_b', 'year_month'])
+    
+    result = []
+    for (source_a, source_b, ym), group in grouped:
+        row = {
+            'source_a': source_a,
+            'source_b': source_b,
+            'pair': f"{source_a} x {source_b}",
+            'year_month': ym,
+            'count': len(group)
+        }
+        
+        # Calcular estatística baseada no tipo de métrica
+        if metric_type == 'pearson':
+            row['mean'] = calculate_monthly_pearson_avg(group)
+            row['std'] = np.nanstd(group[metric_type].values) if len(group) > 1 else np.nan
+        elif metric_type == 'r2':
+            row['mean'] = calculate_monthly_r2_avg(group)
+            row['std'] = np.nanstd(group[metric_type].values) if len(group) > 1 else np.nan
+        else:
+            row['mean'] = np.nanmean(group[metric_type].values)
+            row['std'] = np.nanstd(group[metric_type].values) if len(group) > 1 else np.nan
+        
+        result.append(row)
+    
+    return pd.DataFrame(result)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Calculate metrics between datasets with simplified R² and robust residuals')
     parser.add_argument('--metric', type=str, 
@@ -941,8 +1011,13 @@ if __name__ == '__main__':
                                                  (selection['datetime'].dt.year == year)]
                         if not month_data.empty:
                             month_name = pd.Timestamp(year=year, month=month, day=1).strftime('%B/%Y')
+                            
+                            # CORREÇÃO: Utilizar Fisher Z para médias de correlação de Pearson
                             if metric_type == 'pearson':
-                                month_metric = np.nanmean(month_data[metric_type])
+                                pearson_values = month_data[metric_type].values
+                                valid_metrics = pearson_values[~np.isnan(pearson_values)]
+                                z_values = [fisher_z_transform(v) for v in valid_metrics if not np.isnan(fisher_z_transform(v))]
+                                month_metric = fisher_z_inverse(np.mean(z_values)) if z_values else np.nan
                             elif metric_type == 'r2':
                                 r_values = month_data['pearson_r'].values
                                 valid_r = r_values[~np.isnan(r_values)]
@@ -1241,6 +1316,7 @@ if __name__ == '__main__':
                                 # Format month name
                                 month_name = f"{month}/{year}"
                                 
+                                # CORREÇÃO: Aplicar Fisher Z nas médias mensais
                                 # Calculate metric based on type
                                 if metric_type == 'pearson':
                                     valid_metrics = month_data[metric_type].values
@@ -1291,36 +1367,15 @@ if __name__ == '__main__':
         pair_df.to_csv(output_file, index=False)
         print(f"\nPair metrics exported to {output_file}")
         
-    # Exportar resultados de análise temporal por par (se disponível)
+    # CORREÇÃO: Utilizar nova função para análise temporal por par com Fisher Z
     if 'datetime' in df.columns:
         print("\n===== TEMPORAL ANALYSIS BY PAIR =====")
-        temporal_data = []
         
-        for pair_key in pair_metrics:
-            source_a, source_b = pair_key.split(' x ')
-            pair_df = df[(df['source_a'] == source_a) & (df['source_b'] == source_b)]
-            
-            if pair_df.empty:
-                continue
-                
-            # Converter para datetime se não for
-            if not pd.api.types.is_datetime64_any_dtype(pair_df['datetime']):
-                pair_df['datetime'] = pd.to_datetime(pair_df['datetime'])
-                
-            # Agrupar por mês
-            pair_df['year_month'] = pair_df['datetime'].dt.strftime('%Y-%m')
-            monthly_stats = pair_df.groupby('year_month')[metric_type].agg(['mean', 'count', 'std']).reset_index()
-            
-            # Adicionar informações do par
-            monthly_stats['pair'] = pair_key
-            monthly_stats['source_a'] = source_a
-            monthly_stats['source_b'] = source_b
-            
-            temporal_data.append(monthly_stats)
-            
-        if temporal_data:
+        # Usar a nova função corrigida que aplica Fisher Z quando necessário
+        temporal_df = calculate_temporal_stats(df, metric_type)
+        
+        if not temporal_df.empty:
             try:
-                temporal_df = pd.concat(temporal_data)
                 temporal_file = f'temporal_analysis_{metric_type}.csv'
                 temporal_df.to_csv(temporal_file, index=False)
                 print(f"Temporal analysis exported to {temporal_file}")
