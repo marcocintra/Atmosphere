@@ -1095,6 +1095,9 @@ if __name__ == '__main__':
     dataset_count = defaultdict(int)
     top_maps_by_comparison = {}
     
+    # Calcular métricas médias por fonte ANTECIPADAMENTE
+    dataset_avg_metrics = {}
+    
     for comparison in comparisons:
         source_a, source_b = comparison
         for i in range(min(len(datasets[source_a]), len(datasets[source_b]))):
@@ -1366,6 +1369,24 @@ if __name__ == '__main__':
                             percent_display = f"({month_percent:.2f}{percent_suffix})" if not np.isnan(month_percent) else "(NaN%)"
                             print(f'{month_name}: {metric_type.upper()} = {month_metric:.4f} {percent_display}')
     
+    # Calcular as métricas médias por dataset
+    print("\nCalculating average metrics...")
+    for dataset in dataset_metrics:
+        valid_metrics = [v for v in dataset_metrics[dataset] if not np.isnan(v)]
+        if valid_metrics:
+            if metric_type == 'pearson':
+                z_values = [fisher_z_transform(v) for v in valid_metrics if not np.isnan(fisher_z_transform(v))]
+                dataset_avg_metrics[dataset] = fisher_z_inverse(np.mean(z_values)) if z_values else np.nan
+            elif metric_type == 'r2':
+                r_values = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['pearson_r'].values
+                valid_r = r_values[~np.isnan(r_values)]
+                z_values = [fisher_z_transform(r) for r in valid_r if not np.isnan(fisher_z_transform(r))]
+                dataset_avg_metrics[dataset] = fisher_z_inverse(np.mean(z_values)) ** 2 if z_values else np.nan
+            else:
+                dataset_avg_metrics[dataset] = np.nanmean(valid_metrics)
+        else:
+            dataset_avg_metrics[dataset] = np.nan
+    
     # NOVA SEÇÃO: ANÁLISE POR PARES DE FONTES
     print("\n===== PAIRS COMPARISON =====")
     pair_metrics = calculate_pair_stats(df, metric_type)
@@ -1436,7 +1457,7 @@ if __name__ == '__main__':
 
     if pair_data:
         pair_df = pd.DataFrame(pair_data)
-        output_file = f'pair_metrics_{metric_type}_q3.csv'
+        output_file = f'pair_metrics_{metric_type}.csv'
         pair_df.to_csv(output_file, index=False)
         print(f"\nPair metrics exported to {output_file}")
     
@@ -1470,7 +1491,7 @@ if __name__ == '__main__':
         if temporal_data:
             try:
                 temporal_df = pd.concat(temporal_data)
-                temporal_file = f'temporal_analysis_{metric_type}_q3.csv'
+                temporal_file = f'temporal_analysis_{metric_type}.csv'
                 temporal_df.to_csv(temporal_file, index=False)
                 print(f"Temporal analysis exported to {temporal_file}")
             except Exception as e:
@@ -1485,7 +1506,7 @@ if __name__ == '__main__':
             continue
         
         print(f"\nSource: {source}")
-        avg_value = dataset_avg_metrics[source] if source in dataset_avg_metrics else np.nan
+        avg_value = dataset_avg_metrics[source]  # Agora vai ter valor!
         if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
             percent = avg_value * 100 if not np.isnan(avg_value) else np.nan
             percent_suffix = "%"
@@ -1546,25 +1567,6 @@ if __name__ == '__main__':
         percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
         return f"{dataset_name} with average {metric_type} of {metric_val:.4f} {percent_display}"
     
-    dataset_avg_metrics = {}
-    
-    print("\nCalculating average metrics...")
-    for dataset in dataset_metrics:
-        valid_metrics = [v for v in dataset_metrics[dataset] if not np.isnan(v)]
-        if valid_metrics:
-            if metric_type == 'pearson':
-                z_values = [fisher_z_transform(v) for v in valid_metrics if not np.isnan(fisher_z_transform(v))]
-                dataset_avg_metrics[dataset] = fisher_z_inverse(np.mean(z_values)) if z_values else np.nan
-            elif metric_type == 'r2':
-                r_values = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['pearson_r'].values
-                valid_r = r_values[~np.isnan(r_values)]
-                z_values = [fisher_z_transform(r) for r in valid_r if not np.isnan(fisher_z_transform(r))]
-                dataset_avg_metrics[dataset] = fisher_z_inverse(np.mean(z_values)) ** 2 if z_values else np.nan
-            else:
-                dataset_avg_metrics[dataset] = np.nanmean(valid_metrics)
-        else:
-            dataset_avg_metrics[dataset] = np.nan
-    
     best_dataset = max(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('-inf')) if higher_is_better else \
                    min(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'))
     worst_dataset = min(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf')) if higher_is_better else \
@@ -1618,29 +1620,29 @@ if __name__ == '__main__':
 
     # Exibir ranking
     for i, (dataset, avg_val, percent) in enumerate(sorted_datasets_with_percent, 1):
-            try:
-                if np.isnan(avg_val):
-                    print(f"{i}. {dataset}: NaN (unable to calculate metric)")
-                    continue
-                    
-                if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
-                    percent = avg_val * 100
-                    percent_suffix = "%"
-                elif metric_type == 'mse':
-                    data_ranges = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['data_range'].values
-                    avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
-                    percent = (avg_val / (avg_data_range ** 2) * 100) if avg_data_range != 0 else np.nan
-                    percent_suffix = "% of squared data range"
-                else:
-                    data_ranges = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['data_range'].values
-                    avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
-                    percent = (avg_val / avg_data_range * 100) if avg_data_range != 0 else np.nan
-                    percent_suffix = "% of data range"
+        try:
+            if np.isnan(avg_val):
+                print(f"{i}. {dataset}: NaN (unable to calculate metric)")
+                continue
+                
+            if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+                percent = avg_val * 100
+                percent_suffix = "%"
+            elif metric_type == 'mse':
+                data_ranges = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['data_range'].values
+                avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
+                percent = (avg_val / (avg_data_range ** 2) * 100) if avg_data_range != 0 else np.nan
+                percent_suffix = "% of squared data range"
+            else:
+                data_ranges = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['data_range'].values
+                avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
+                percent = (avg_val / avg_data_range * 100) if avg_data_range != 0 else np.nan
+                percent_suffix = "% of data range"
 
-                percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
-                print(f"{i}. {dataset}: {avg_val:.4f} {percent_display}")
-            except Exception as e:
-                print(f"{i}. {dataset}: Error calculating metric display: {str(e)}")
+            percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
+            print(f"{i}. {dataset}: {avg_val:.4f} {percent_display}")
+        except Exception as e:
+            print(f"{i}. {dataset}: Error calculating metric display: {str(e)}")
     
     overall_top_count = 50
 
@@ -1716,12 +1718,12 @@ if __name__ == '__main__':
     print(f"Total files processed: {processed_files}")
     print(f"Total pairs analyzed: {len(pair_metrics)}")
     print(f"Total files skipped: {skipped_files}")
-    print(f"Total missing files: {total_missing}")  # Adicionada esta linha
-    print(f"Total error files: {total_errors}")     # Adicionada esta linha
+    print(f"Total missing files: {total_missing}")
+    print(f"Total error files: {total_errors}")
     print(f"Results saved to:")
     print(f"  - result_{metric_type}_with_stats.csv (all individual comparisons)")
-    print(f"  - pair_metrics_{metric_type}_q3.csv (pair summary metrics)")
+    print(f"  - pair_metrics_{metric_type}.csv (pair summary metrics)")
     if 'datetime' in df.columns:
-        print(f"  - temporal_analysis_{metric_type}_q3.csv (monthly metrics by pair)")
-    if debug_skipped:  # Adicionado este bloco condicional
+        print(f"  - temporal_analysis_{metric_type}.csv (monthly metrics by pair)")
+    if debug_skipped:
         print(f"  - {debug_file} (detailed log of missing and error files)")
