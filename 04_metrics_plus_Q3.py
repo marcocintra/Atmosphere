@@ -1716,8 +1716,12 @@ if __name__ == '__main__':
     print(f"Total files processed: {processed_files}")
     print(f"Total pairs analyzed: {len(pair_metrics)}")
     print(f"Total files skipped: {skipped_files}")
+    print(f"Total missing files: {total_missing}")  # Adicionada esta linha
+    print(f"Total error files: {total_errors}")     # Adicionada esta linha
     print(f"Results saved to:")
     print(f"  - result_{metric_type}_with_stats.csv (all individual comparisons)")
     print(f"  - pair_metrics_{metric_type}_q3.csv (pair summary metrics)")
     if 'datetime' in df.columns:
         print(f"  - temporal_analysis_{metric_type}_q3.csv (monthly metrics by pair)")
+    if debug_skipped:  # Adicionado este bloco condicional
+        print(f"  - {debug_file} (detailed log of missing and error files)")
