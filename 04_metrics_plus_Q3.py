@@ -496,15 +496,21 @@ def fisher_z_inverse(z):
         return np.nan
     return (np.exp(2 * z) - 1) / (np.exp(2 * z) + 1)
 
-# NOVA FUNÇÃO: Calcula média de Pearson com Fisher Z
 def calculate_pearson_avg_with_fisher(values):
     """Calcula a média de correlação de Pearson usando transformação Fisher Z."""
-    valid_values = values[~np.isnan(values)]
+    # Primeiro, converter para um array NumPy se não for
+    values_array = np.asarray(values, dtype=float)
+    
+    # Agora podemos verificar valores NaN com segurança
+    valid_values = values_array[~np.isnan(values_array)]
+    
     if len(valid_values) == 0:
         return np.nan
+        
     z_values = [fisher_z_transform(v) for v in valid_values if not np.isnan(fisher_z_transform(v))]
     if not z_values:
         return np.nan
+        
     return fisher_z_inverse(np.mean(z_values))
 
 # NOVA FUNÇÃO: Agregação personalizada para usar com pandas
