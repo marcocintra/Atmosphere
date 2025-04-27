@@ -83,12 +83,34 @@ def calculate_pearson(y_true, y_pred, filename="unknown", pixel_mask=None):
             return np.nan
         y_true = y_true[pixel_mask]
         y_pred = y_pred[pixel_mask]
+    
     if len(y_true) == 0 or len(y_pred) == 0 or np.all(np.isnan(y_true)) or np.all(np.isnan(y_pred)):
         return np.nan
+    
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     if np.sum(valid_mask) < 2:
         return np.nan
-    return np.corrcoef(y_true[valid_mask], y_pred[valid_mask])[0, 1]
+    
+    y_true_valid = y_true[valid_mask]
+    y_pred_valid = y_pred[valid_mask]
+    
+    # Verificar variância zero
+    var_true = np.var(y_true_valid)
+    var_pred = np.var(y_pred_valid)
+    
+    if var_true < 1e-10 or var_pred < 1e-10:
+        return 0.0  # Retorna 0 para casos de variância zero em vez de NaN
+    
+    try:
+        corr = np.corrcoef(y_true_valid, y_pred_valid)[0, 1]
+        
+        # Verificar se o resultado é válido
+        if np.isnan(corr) or np.isinf(corr):
+            return np.nan
+            
+        return corr
+    except Exception as e:
+        return np.nan
 
 def calculate_r2_score(y_true, y_pred, filename="unknown", pixel_mask=None):
     """Calcula o R² como o quadrado da correlação de Pearson."""
@@ -459,9 +481,12 @@ def calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_q3, verbose=False):
         return np.nan
 
 def fisher_z_transform(r):
-    """Transforma correlação r para valor z, evitando valores extremos."""
-    if np.isnan(r) or abs(r) >= 1:
+    """Transforma correlação r para valor z, tratando correlações perfeitas."""
+    if np.isnan(r):
         return np.nan
+    # Mantém correlações perfeitas em vez de transformá-las em NaN
+    if abs(r) >= 1:
+        return 4.0 * np.sign(r)  # Um valor grande com o mesmo sinal de r
     r = np.clip(r, -0.9999, 0.9999)
     return 0.5 * np.log((1 + r) / (1 - r))
 
@@ -574,6 +599,50 @@ def verify_combined_stats(selection):
             inconsistencies += 1
     return inconsistencies == 0
 
+def calculate_pair_stats(df, metric_type):
+    """Calcula estatísticas para cada par de fontes (source_a, source_b)"""
+    pair_stats = defaultdict(list)
+    pair_counts = defaultdict(int)
+    
+    # Agrupa por pares de fontes
+    for _, row in df.iterrows():
+        source_a, source_b = row['source_a'], row['source_b']
+        pair_key = f"{source_a} x {source_b}"
+        
+        # Só adiciona se houver um valor de métrica válido
+        metric_val = row[metric_type]
+        if not np.isnan(metric_val):
+            pair_stats[pair_key].append(metric_val)
+            pair_counts[pair_key] += 1
+    
+    # Calcula métricas resumidas para cada par
+    pair_metrics = {}
+    for pair_key, values in pair_stats.items():
+        if metric_type == 'pearson':
+            z_values = [fisher_z_transform(v) for v in values if not np.isnan(fisher_z_transform(v))]
+            pair_metrics[pair_key] = {
+                'metric_value': fisher_z_inverse(np.mean(z_values)) if z_values else np.nan,
+                'count': pair_counts[pair_key]
+            }
+        elif metric_type == 'r2':
+            # Para R², precisamos dos valores de r original (que é a raiz quadrada do R²)
+            source_a, source_b = pair_key.split(' x ')
+            r_values = df.loc[(df['source_a'] == source_a) & (df['source_b'] == source_b)]['pearson_r'].values
+            valid_r = r_values[~np.isnan(r_values)]
+            z_values = [fisher_z_transform(r) for r in valid_r if not np.isnan(fisher_z_transform(r))]
+            pair_metrics[pair_key] = {
+                'metric_value': fisher_z_inverse(np.mean(z_values)) ** 2 if z_values else np.nan,
+                'count': pair_counts[pair_key]
+            }
+        else:
+            # Para outras métricas, calculamos a média direta
+            pair_metrics[pair_key] = {
+                'metric_value': np.nanmean(values),
+                'count': pair_counts[pair_key]
+            }
+    
+    return pair_metrics
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Calculate metrics between datasets with simplified R², robust residuals, and Q3-based pixel selection')
     parser.add_argument('--metric', type=str, 
@@ -605,6 +674,10 @@ if __name__ == '__main__':
                         help='Number of sample file pairs to debug in detail')
     parser.add_argument('--check-images', action='store_true',
                         help='Verify image loading without running full analysis')
+    parser.add_argument('--debug-skipped', action='store_true',
+                        help='Enable detailed logging for skipped files')
+    parser.add_argument('--debug-file', type=str, default="debug_missing_files.log",
+                        help='File to log debug information about missing files')
     args = parser.parse_args()
     
     if args.check_existing:
@@ -627,6 +700,8 @@ if __name__ == '__main__':
     verbose = args.verbose
     sample_debug = args.sample_debug
     check_images = args.check_images
+    debug_skipped = args.debug_skipped
+    debug_file = args.debug_file
     
     higher_is_better = metric_type in ['pearson', 'r2', 'cosine', 'ssim']
     
@@ -728,7 +803,16 @@ if __name__ == '__main__':
     
     processed_files = 0
     skipped_files = 0
+    total_missing = 0
+    total_errors = 0
     result = []
+    
+    # Se debug_skipped for verdadeiro, inicialize o arquivo de debug
+    debug_log = None
+    if debug_skipped:
+        debug_log = open(debug_file, 'w', encoding='utf-8')
+        debug_log.write(f"Debug log for {metric_type} metric calculation with dataset suffix '{dataset_suffix}'\n")
+        debug_log.write("=" * 80 + "\n\n")
     
     for comparison in comparisons:
         source_a, source_b = comparison
@@ -760,10 +844,17 @@ if __name__ == '__main__':
             print(f"Found {len(files_a)} {file_extension} files in {dataset_a}")
             
             debug_count = 0
+            pair_processed = 0
+            pair_skipped = 0
+            
             for file_a in files_a:
                 file_b = dir_b / file_a.name
                 if not file_b.exists():
                     skipped_files += 1
+                    pair_skipped += 1
+                    total_missing += 1
+                    if debug_skipped:
+                        debug_log.write(f"MISSING: {file_b} (matching {file_a})\n")
                     if verbose:
                         print(f"Skipping {file_a.name} - corresponding file not found in {dataset_b}")
                     continue
@@ -783,6 +874,10 @@ if __name__ == '__main__':
                     
                     if map_a is None or map_b is None:
                         skipped_files += 1
+                        pair_skipped += 1
+                        total_errors += 1
+                        if debug_skipped:
+                            debug_log.write(f"ERROR: Failed to load {file_a.name} or {file_b.name}\n")
                         if file_verbose:
                             print(f"Skipping {file_a.name} - failed to load one or both images")
                         continue
@@ -793,6 +888,7 @@ if __name__ == '__main__':
                     map_b_flat = map_b.flatten()
                     
                     processed_files += 1
+                    pair_processed += 1
                     stats = calculate_strict_stats(map_a, map_b)
                     
                     if file_verbose:
@@ -960,8 +1056,27 @@ if __name__ == '__main__':
                         print(f"Processed {processed_files} file pairs, Skipped {skipped_files} files...")
                 except Exception as e:
                     skipped_files += 1
+                    pair_skipped += 1
+                    total_errors += 1
+                    if debug_skipped:
+                        debug_log.write(f"ERROR processing {file_a.name}: {str(e)}\n")
                     if file_verbose:
                         print(f"ERROR processing {file_a.name}: {str(e)}")
+            
+            # Informações resumidas para cada par de datasets
+            print(f"\nFor pair {dataset_a} x {dataset_b}: Processed {pair_processed}, Skipped {pair_skipped}")
+            if debug_skipped:
+                debug_log.write(f"\nSummary for pair {dataset_a} x {dataset_b}:\n")
+                debug_log.write(f"  Processed: {pair_processed}, Skipped: {pair_skipped}\n\n")
+    
+    if debug_skipped and debug_log:
+        debug_log.write(f"\n\nFINAL SUMMARY:\n")
+        debug_log.write(f"Total files processed: {processed_files}\n")
+        debug_log.write(f"Total files skipped: {skipped_files}\n")
+        debug_log.write(f"  - Missing files: {total_missing}\n")
+        debug_log.write(f"  - Error loading files: {total_errors}\n")
+        debug_log.close()
+        print(f"\nDebug information saved to {debug_file}")
     
     if not result:
         print(f"\nERROR: No valid data pairs found for analysis. Please check dataset directories and {file_extension} files.")
@@ -1251,6 +1366,166 @@ if __name__ == '__main__':
                             percent_display = f"({month_percent:.2f}{percent_suffix})" if not np.isnan(month_percent) else "(NaN%)"
                             print(f'{month_name}: {metric_type.upper()} = {month_metric:.4f} {percent_display}')
     
+    # NOVA SEÇÃO: ANÁLISE POR PARES DE FONTES
+    print("\n===== PAIRS COMPARISON =====")
+    pair_metrics = calculate_pair_stats(df, metric_type)
+
+    # Calcular percentuais para cada par
+    for pair_key, data in pair_metrics.items():
+        metric_val = data['metric_value']
+        if np.isnan(metric_val):
+            data['percent'] = np.nan
+            continue
+            
+        # Calcular o percentual baseado no tipo de métrica
+        if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+            data['percent'] = metric_val * 100
+        else:
+            # Para métricas baseadas em erro, precisamos do data_range médio para este par
+            source_a, source_b = pair_key.split(' x ')
+            pair_data_ranges = df[(df['source_a'] == source_a) & (df['source_b'] == source_b)]['data_range'].values
+            avg_data_range = np.nanmean(pair_data_ranges) if len(pair_data_ranges) > 0 else 1.0
+            
+            if metric_type == 'mse' and avg_data_range != 0:
+                data['percent'] = (metric_val / (avg_data_range ** 2) * 100)
+            elif avg_data_range != 0:
+                data['percent'] = (metric_val / avg_data_range * 100)
+            else:
+                data['percent'] = np.nan
+
+    # Ordenar os pares por sua métrica (maior para menor ou menor para maior dependendo do tipo)
+    sorted_pairs = list(pair_metrics.items())
+    if higher_is_better:
+        sorted_pairs.sort(key=lambda x: float('-inf') if np.isnan(x[1]['percent']) else x[1]['percent'], reverse=True)
+    else:
+        sorted_pairs.sort(key=lambda x: float('inf') if np.isnan(x[1]['percent']) else x[1]['percent'], reverse=False)
+
+    # Exibir o ranking de pares
+    print("\nPairs Ranking (from best to worst):")
+    for i, (pair_key, data) in enumerate(sorted_pairs, 1):
+        metric_val = data['metric_value']
+        percent = data['percent']
+        count = data['count']
+        
+        if np.isnan(metric_val):
+            print(f"{i}. {pair_key}: NaN (unable to calculate metric) - {count} comparisons")
+            continue
+            
+        if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+            percent_suffix = "%"
+        elif metric_type == 'mse':
+            percent_suffix = "% of squared data range"
+        else:
+            percent_suffix = "% of data range"
+
+        percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
+        print(f"{i}. {pair_key}: {metric_val:.4f} {percent_display} - {count} comparisons")
+
+    # Exportar métricas de pares para um arquivo CSV
+    pair_data = []
+    for pair_key, data in pair_metrics.items():
+        source_a, source_b = pair_key.split(' x ')
+        pair_data.append({
+            'source_a': source_a,
+            'source_b': source_b,
+            'pair': pair_key,
+            f'{metric_type}_value': data['metric_value'],
+            f'{metric_type}_percent': data['percent'],
+            'comparison_count': data['count']
+        })
+
+    if pair_data:
+        pair_df = pd.DataFrame(pair_data)
+        output_file = f'pair_metrics_{metric_type}_q3.csv'
+        pair_df.to_csv(output_file, index=False)
+        print(f"\nPair metrics exported to {output_file}")
+    
+    # Exportar resultados de análise temporal por par (se disponível)
+    if 'datetime' in df.columns:
+        print("\n===== TEMPORAL ANALYSIS BY PAIR =====")
+        temporal_data = []
+        
+        for pair_key in pair_metrics:
+            source_a, source_b = pair_key.split(' x ')
+            pair_df = df[(df['source_a'] == source_a) & (df['source_b'] == source_b)]
+            
+            if pair_df.empty:
+                continue
+                
+            # Converter para datetime se não for
+            if not pd.api.types.is_datetime64_any_dtype(pair_df['datetime']):
+                pair_df['datetime'] = pd.to_datetime(pair_df['datetime'])
+                
+            # Agrupar por mês
+            pair_df['year_month'] = pair_df['datetime'].dt.strftime('%Y-%m')
+            monthly_stats = pair_df.groupby('year_month')[metric_type].agg(['mean', 'count', 'std']).reset_index()
+            
+            # Adicionar informações do par
+            monthly_stats['pair'] = pair_key
+            monthly_stats['source_a'] = source_a
+            monthly_stats['source_b'] = source_b
+            
+            temporal_data.append(monthly_stats)
+            
+        if temporal_data:
+            try:
+                temporal_df = pd.concat(temporal_data)
+                temporal_file = f'temporal_analysis_{metric_type}_q3.csv'
+                temporal_df.to_csv(temporal_file, index=False)
+                print(f"Temporal analysis exported to {temporal_file}")
+            except Exception as e:
+                print(f"Error in temporal analysis export: {str(e)}")
+
+    # NOVA SEÇÃO: ANÁLISE POR FONTE
+    print("\n===== SOURCE ANALYSIS =====")
+    # Para cada fonte, mostre a qualidade média de suas comparações
+    for source in dataset_metrics:
+        source_pairs = [pair for pair in pair_metrics.keys() if source in pair]
+        if not source_pairs:
+            continue
+        
+        print(f"\nSource: {source}")
+        avg_value = dataset_avg_metrics[source] if source in dataset_avg_metrics else np.nan
+        if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+            percent = avg_value * 100 if not np.isnan(avg_value) else np.nan
+            percent_suffix = "%"
+        else:
+            data_ranges = df[(df['source_a'] == source) | (df['source_b'] == source)]['data_range'].values
+            avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
+            if metric_type == 'mse' and not np.isnan(avg_value) and avg_data_range != 0:
+                percent = (avg_value / (avg_data_range ** 2) * 100)
+                percent_suffix = "% of squared data range"
+            elif not np.isnan(avg_value) and avg_data_range != 0:
+                percent = (avg_value / avg_data_range * 100)
+                percent_suffix = "% of data range"
+            else:
+                percent = np.nan
+                percent_suffix = "%"
+        
+        percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
+        print(f"Average {metric_type}: {avg_value:.4f} {percent_display}")
+        print("Comparisons:")
+        
+        # Listar todos os pares envolvendo esta fonte
+        for pair in source_pairs:
+            metric_val = pair_metrics[pair]['metric_value']
+            percent = pair_metrics[pair]['percent']
+            count = pair_metrics[pair]['count']
+            
+            if np.isnan(metric_val):
+                print(f"  {pair}: NaN (unable to calculate metric) - {count} comparisons")
+                continue
+                
+            if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+                percent_suffix = "%"
+            elif metric_type == 'mse':
+                percent_suffix = "% of squared data range"
+            else:
+                percent_suffix = "% of data range"
+        
+            percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
+            print(f"  {pair}: {metric_val:.4f} {percent_display} - {count} comparisons")
+    
     # Função para formatar a exibição de métrica com porcentagem
     def format_dataset_metric(dataset_name, metric_val):
         if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
@@ -1293,7 +1568,7 @@ if __name__ == '__main__':
     best_dataset = max(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('-inf')) if higher_is_better else \
                    min(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'))
     worst_dataset = min(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf')) if higher_is_better else \
-                    max(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'))
+                    max(dataset_avg_metrics.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('-inf'))
     
     metric_name = {
         'pearson': 'PEARSON CORRELATION',
@@ -1436,3 +1711,13 @@ if __name__ == '__main__':
         if idx < len(top_overall):
             print("-" * 80)
     print("-" * 120)
+
+    print(f"\n===== ANALYSIS COMPLETE =====")
+    print(f"Total files processed: {processed_files}")
+    print(f"Total pairs analyzed: {len(pair_metrics)}")
+    print(f"Total files skipped: {skipped_files}")
+    print(f"Results saved to:")
+    print(f"  - result_{metric_type}_with_stats.csv (all individual comparisons)")
+    print(f"  - pair_metrics_{metric_type}_q3.csv (pair summary metrics)")
+    if 'datetime' in df.columns:
+        print(f"  - temporal_analysis_{metric_type}_q3.csv (monthly metrics by pair)")
