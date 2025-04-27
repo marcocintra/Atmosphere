@@ -496,6 +496,22 @@ def fisher_z_inverse(z):
         return np.nan
     return (np.exp(2 * z) - 1) / (np.exp(2 * z) + 1)
 
+# NOVA FUNÇÃO: Calcula média de Pearson com Fisher Z
+def calculate_pearson_avg_with_fisher(values):
+    """Calcula a média de correlação de Pearson usando transformação Fisher Z."""
+    valid_values = values[~np.isnan(values)]
+    if len(valid_values) == 0:
+        return np.nan
+    z_values = [fisher_z_transform(v) for v in valid_values if not np.isnan(fisher_z_transform(v))]
+    if not z_values:
+        return np.nan
+    return fisher_z_inverse(np.mean(z_values))
+
+# NOVA FUNÇÃO: Agregação personalizada para usar com pandas
+def pearson_fisher_agg(series):
+    """Função de agregação para calcular média de correlação com Fisher Z."""
+    return calculate_pearson_avg_with_fisher(series.values)
+
 def calculate_strict_stats(map_a, map_b):
     """Calcula estatísticas consistentes para os mapas, incluindo Q1 e Q3."""
     map_a_flat = map_a.flatten() if len(map_a.shape) > 1 else map_a
@@ -642,6 +658,74 @@ def calculate_pair_stats(df, metric_type):
             }
     
     return pair_metrics
+
+# NOVA FUNÇÃO: Calcula média mensal com Fisher Z para métricas de Pearson e derivados
+def calculate_monthly_metrics(month_data, metric_type):
+    """Calcula média mensal de métricas com tratamento especial para Pearson usando Fisher Z."""
+    if metric_type == 'pearson':
+        pearson_values = month_data[metric_type].values
+        return calculate_pearson_avg_with_fisher(pearson_values)
+    elif metric_type == 'r2':
+        r_values = month_data['pearson_r'].values
+        valid_r = r_values[~np.isnan(r_values)]
+        z_values = [fisher_z_transform(r) for r in valid_r if not np.isnan(fisher_z_transform(r))]
+        return fisher_z_inverse(np.mean(z_values)) ** 2 if z_values else np.nan
+    elif metric_type == 'residual':
+        return np.nanmean(np.abs(month_data[metric_type].values))
+    else:
+        return np.nanmean(month_data[metric_type].values)
+
+# NOVA FUNÇÃO: Calcula estatísticas temporais por agregação manual
+def calculate_temporal_stats(df, metric_type):
+    """Calcula estatísticas temporais com tratamento adequado para correlações de Pearson."""
+    if 'datetime' not in df.columns:
+        return pd.DataFrame()
+        
+    # Preparar dataframe para análise temporal
+    temp_df = df.copy()
+    if not pd.api.types.is_datetime64_any_dtype(temp_df['datetime']):
+        temp_df['datetime'] = pd.to_datetime(temp_df['datetime'])
+    
+    # Adicionar coluna de ano-mês
+    temp_df['year_month'] = temp_df['datetime'].dt.strftime('%Y-%m')
+    
+    # Agrupar por par e ano-mês
+    result = []
+    for (source_a, source_b), group in temp_df.groupby(['source_a', 'source_b']):
+        for year_month, month_group in group.groupby('year_month'):
+            # Calcular métricas com tratamento adequado
+            if metric_type == 'pearson':
+                mean_value = calculate_pearson_avg_with_fisher(month_group[metric_type].values)
+                q3_a_mean = calculate_pearson_avg_with_fisher(month_group[f'{metric_type}_q3_a'].values) 
+                q3_b_mean = calculate_pearson_avg_with_fisher(month_group[f'{metric_type}_q3_b'].values)
+            elif metric_type == 'r2':
+                r_values = month_group['pearson_r'].values
+                mean_value = calculate_pearson_avg_with_fisher(r_values) ** 2
+                q3_a_mean = np.nanmean(month_group[f'{metric_type}_q3_a'].values)
+                q3_b_mean = np.nanmean(month_group[f'{metric_type}_q3_b'].values)
+            else:
+                # Para outras métricas, usar média regular
+                mean_value = np.nanmean(month_group[metric_type].values)
+                q3_a_mean = np.nanmean(month_group[f'{metric_type}_q3_a'].values)
+                q3_b_mean = np.nanmean(month_group[f'{metric_type}_q3_b'].values)
+            
+            # Calcular desvio padrão e contagem
+            count = len(month_group)
+            std_value = np.nanstd(month_group[metric_type].values) if count > 1 else np.nan
+            
+            result.append({
+                'source_a': source_a,
+                'source_b': source_b,
+                'pair': f"{source_a} x {source_b}",
+                'year_month': year_month,
+                f'{metric_type}_mean': mean_value,
+                f'{metric_type}_q3_a_mean': q3_a_mean,
+                f'{metric_type}_q3_b_mean': q3_b_mean,
+                f'{metric_type}_std': std_value,
+                'count': count
+            })
+    
+    return pd.DataFrame(result) if result else pd.DataFrame()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Calculate metrics between datasets with simplified R², robust residuals, and Q3-based pixel selection')
@@ -896,8 +980,7 @@ if __name__ == '__main__':
                         print(f"  Map A: Min={stats['min_a']:.4f}, Mean={stats['mean_a']:.4f}, Max={stats['max_a']:.4f}")
                         print(f"  Map B: Min={stats['min_b']:.4f}, Mean={stats['mean_b']:.4f}, Max={stats['max_b']:.4f}")
                         print(f"  Combined data range: {stats['data_range']:.4f}")
-                    
-                    # Calculate Q3 masks
+
                     mask_a_q3, q3_a = calculate_q3_mask(map_a, verbose=file_verbose)
                     mask_b_q3, q3_b = calculate_q3_mask(map_b, verbose=file_verbose)
                     
@@ -1121,27 +1204,40 @@ if __name__ == '__main__':
             metric_values = selection[metric_type].values
             valid_metrics = metric_values[~np.isnan(metric_values)]
             
+            # CORREÇÃO: Aplicação consistente de Fisher Z para médias de Pearson
             if len(valid_metrics) > 0:
                 if metric_type == 'pearson':
-                    z_values = [fisher_z_transform(v) for v in valid_metrics if not np.isnan(fisher_z_transform(v))]
-                    metric_value = fisher_z_inverse(np.mean(z_values)) if z_values else np.nan
+                    # Usar a função de média com Fisher Z
+                    metric_value = calculate_pearson_avg_with_fisher(valid_metrics)
                 elif metric_type == 'r2':
                     r_values = selection['pearson_r'].values
                     valid_r = r_values[~np.isnan(r_values)]
-                    z_values = [fisher_z_transform(r) for r in valid_r if not np.isnan(fisher_z_transform(r))]
-                    metric_value = fisher_z_inverse(np.mean(z_values)) ** 2 if z_values else np.nan
+                    # Aplicar Fisher Z nas correlações r antes de converter para R²
+                    metric_value = calculate_pearson_avg_with_fisher(valid_r) ** 2
                 else:
                     metric_value = np.nanmean(np.abs(valid_metrics)) if metric_type == 'residual' else np.nanmean(valid_metrics)
             else:
                 metric_value = np.nan
             
-            # Q3-based metric averages
+            # Calcular médias para métricas Q3 com Fisher Z quando aplicável
             metric_q3_a_values = selection[f'{metric_type}_q3_a'].values
             metric_q3_b_values = selection[f'{metric_type}_q3_b'].values
             valid_q3_a = metric_q3_a_values[~np.isnan(metric_q3_a_values)]
             valid_q3_b = metric_q3_b_values[~np.isnan(metric_q3_b_values)]
-            metric_q3_a_avg = np.nanmean(valid_q3_a) if len(valid_q3_a) > 0 else np.nan
-            metric_q3_b_avg = np.nanmean(valid_q3_b) if len(valid_q3_b) > 0 else np.nan
+            
+            # CORREÇÃO: Aplicar Fisher Z para médias Q3 de correlação de Pearson
+            if metric_type == 'pearson':
+                metric_q3_a_avg = calculate_pearson_avg_with_fisher(valid_q3_a)
+                metric_q3_b_avg = calculate_pearson_avg_with_fisher(valid_q3_b)
+            elif metric_type == 'r2' and 'pearson_r' in selection:
+                # Para R², precisamos transformar os valores r individuais
+                r_q3_a = np.sqrt(valid_q3_a)  # R² é o quadrado de r
+                r_q3_b = np.sqrt(valid_q3_b)
+                metric_q3_a_avg = calculate_pearson_avg_with_fisher(r_q3_a) ** 2
+                metric_q3_b_avg = calculate_pearson_avg_with_fisher(r_q3_b) ** 2
+            else:
+                metric_q3_a_avg = np.nanmean(valid_q3_a) if len(valid_q3_a) > 0 else np.nan
+                metric_q3_b_avg = np.nanmean(valid_q3_b) if len(valid_q3_b) > 0 else np.nan
             
             dataset_metrics[source_a].extend(valid_metrics)
             dataset_metrics[source_b].extend(valid_metrics)
@@ -1218,12 +1314,12 @@ if __name__ == '__main__':
             
             if metric_type == 'pearson':
                 print(f'Average Pearson Correlation: {metric_value:.4f} {percent_display} (Fisher Z applied)')
-                print(f'Average Pearson (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
-                print(f'Average Pearson (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}')
+                print(f'Average Pearson (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)} (Fisher Z applied)')
+                print(f'Average Pearson (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)} (Fisher Z applied)')
             elif metric_type == 'r2':
                 print(f'Average R² Score: {metric_value:.4f} {percent_display} (Fisher Z applied on Pearson r)')
-                print(f'Average R² (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
-                print(f'Average R² (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}')
+                print(f'Average R² (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)} (Fisher Z applied)')
+                print(f'Average R² (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)} (Fisher Z applied)')
             elif metric_type == 'ssim':
                 print(f'Average Structural Similarity Index: {metric_value:.4f} {percent_display}')
                 print(f'Average SSIM (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
@@ -1336,6 +1432,7 @@ if __name__ == '__main__':
                     print("-" * 80)
             print("-" * 120)
             
+            # CORREÇÃO: Usar Fisher Z para análises mensais de Pearson
             if 'datetime' in selection.columns:
                 for year in [2022, 2023, 2024]:
                     for month in range(1, 13):
@@ -1343,15 +1440,9 @@ if __name__ == '__main__':
                                                  (selection['datetime'].dt.year == year)]
                         if not month_data.empty:
                             month_name = pd.Timestamp(year=year, month=month, day=1).strftime('%B/%Y')
-                            if metric_type == 'pearson':
-                                month_metric = np.nanmean(month_data[metric_type])
-                            elif metric_type == 'r2':
-                                r_values = month_data['pearson_r'].values
-                                valid_r = r_values[~np.isnan(r_values)]
-                                z_values = [fisher_z_transform(r) for r in valid_r if not np.isnan(fisher_z_transform(r))]
-                                month_metric = fisher_z_inverse(np.mean(z_values)) ** 2 if z_values else np.nan
-                            else:
-                                month_metric = np.nanmean(np.abs(month_data[metric_type])) if metric_type == 'residual' else np.nanmean(month_data[metric_type])
+                            
+                            # CORREÇÃO: Usar a função de cálculo mensal que aplica Fisher Z quando necessário
+                            month_metric = calculate_monthly_metrics(month_data, metric_type)
                             
                             if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
                                 # Métricas já normalizadas
@@ -1367,21 +1458,21 @@ if __name__ == '__main__':
                                 percent_suffix = "% of data range"
 
                             percent_display = f"({month_percent:.2f}{percent_suffix})" if not np.isnan(month_percent) else "(NaN%)"
-                            print(f'{month_name}: {metric_type.upper()} = {month_metric:.4f} {percent_display}')
+                            fisher_note = " (Fisher Z applied)" if metric_type in ['pearson', 'r2'] else ""
+                            print(f'{month_name}: {metric_type.upper()} = {month_metric:.4f} {percent_display}{fisher_note}')
     
-    # Calcular as métricas médias por dataset
+    # Calcular as métricas médias por dataset usando Fisher Z para Pearson
     print("\nCalculating average metrics...")
     for dataset in dataset_metrics:
         valid_metrics = [v for v in dataset_metrics[dataset] if not np.isnan(v)]
         if valid_metrics:
+            # CORREÇÃO: Usar Fisher Z para médias de Pearson
             if metric_type == 'pearson':
-                z_values = [fisher_z_transform(v) for v in valid_metrics if not np.isnan(fisher_z_transform(v))]
-                dataset_avg_metrics[dataset] = fisher_z_inverse(np.mean(z_values)) if z_values else np.nan
+                dataset_avg_metrics[dataset] = calculate_pearson_avg_with_fisher(valid_metrics)
             elif metric_type == 'r2':
                 r_values = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['pearson_r'].values
                 valid_r = r_values[~np.isnan(r_values)]
-                z_values = [fisher_z_transform(r) for r in valid_r if not np.isnan(fisher_z_transform(r))]
-                dataset_avg_metrics[dataset] = fisher_z_inverse(np.mean(z_values)) ** 2 if z_values else np.nan
+                dataset_avg_metrics[dataset] = calculate_pearson_avg_with_fisher(valid_r) ** 2
             else:
                 dataset_avg_metrics[dataset] = np.nanmean(valid_metrics)
         else:
@@ -1440,7 +1531,8 @@ if __name__ == '__main__':
             percent_suffix = "% of data range"
 
         percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
-        print(f"{i}. {pair_key}: {metric_val:.4f} {percent_display} - {count} comparisons")
+        fisher_note = " (Fisher Z applied)" if metric_type in ['pearson', 'r2'] else ""
+        print(f"{i}. {pair_key}: {metric_val:.4f} {percent_display}{fisher_note} - {count} comparisons")
 
     # Exportar métricas de pares para um arquivo CSV
     pair_data = []
@@ -1461,36 +1553,15 @@ if __name__ == '__main__':
         pair_df.to_csv(output_file, index=False)
         print(f"\nPair metrics exported to {output_file}")
     
-    # Exportar resultados de análise temporal por par (se disponível)
+    # CORREÇÃO: Usar a nova função calculate_temporal_stats para análise temporal
     if 'datetime' in df.columns:
         print("\n===== TEMPORAL ANALYSIS BY PAIR =====")
-        temporal_data = []
         
-        for pair_key in pair_metrics:
-            source_a, source_b = pair_key.split(' x ')
-            pair_df = df[(df['source_a'] == source_a) & (df['source_b'] == source_b)]
-            
-            if pair_df.empty:
-                continue
-                
-            # Converter para datetime se não for
-            if not pd.api.types.is_datetime64_any_dtype(pair_df['datetime']):
-                pair_df['datetime'] = pd.to_datetime(pair_df['datetime'])
-                
-            # Agrupar por mês
-            pair_df['year_month'] = pair_df['datetime'].dt.strftime('%Y-%m')
-            monthly_stats = pair_df.groupby('year_month')[metric_type].agg(['mean', 'count', 'std']).reset_index()
-            
-            # Adicionar informações do par
-            monthly_stats['pair'] = pair_key
-            monthly_stats['source_a'] = source_a
-            monthly_stats['source_b'] = source_b
-            
-            temporal_data.append(monthly_stats)
-            
-        if temporal_data:
+        # Usar a função corrigida para análise temporal
+        temporal_df = calculate_temporal_stats(df, metric_type)
+        
+        if not temporal_df.empty:
             try:
-                temporal_df = pd.concat(temporal_data)
                 temporal_file = f'temporal_analysis_{metric_type}.csv'
                 temporal_df.to_csv(temporal_file, index=False)
                 print(f"Temporal analysis exported to {temporal_file}")
@@ -1506,7 +1577,7 @@ if __name__ == '__main__':
             continue
         
         print(f"\nSource: {source}")
-        avg_value = dataset_avg_metrics[source]  # Agora vai ter valor!
+        avg_value = dataset_avg_metrics[source]
         if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
             percent = avg_value * 100 if not np.isnan(avg_value) else np.nan
             percent_suffix = "%"
@@ -1524,7 +1595,8 @@ if __name__ == '__main__':
                 percent_suffix = "%"
         
         percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
-        print(f"Average {metric_type}: {avg_value:.4f} {percent_display}")
+        fisher_note = " (Fisher Z applied)" if metric_type in ['pearson', 'r2'] else ""
+        print(f"Average {metric_type}: {avg_value:.4f} {percent_display}{fisher_note}")
         print("Comparisons:")
         
         # Listar todos os pares envolvendo esta fonte
@@ -1545,7 +1617,8 @@ if __name__ == '__main__':
                 percent_suffix = "% of data range"
         
             percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
-            print(f"  {pair}: {metric_val:.4f} {percent_display} - {count} comparisons")
+            fisher_note = " (Fisher Z applied)" if metric_type in ['pearson', 'r2'] else ""
+            print(f"  {pair}: {metric_val:.4f} {percent_display}{fisher_note} - {count} comparisons")
             
             # Add monthly breakdown for this pair
             if 'datetime' in df.columns:
@@ -1576,23 +1649,24 @@ if __name__ == '__main__':
                                 # Format month name
                                 month_name = f"{month}/{year}"
                                 
-                                # Calculate standard metric
-                                if metric_type == 'pearson':
-                                    valid_metrics = month_data[metric_type].values
-                                    valid_metrics = valid_metrics[~np.isnan(valid_metrics)]
-                                    z_values = [fisher_z_transform(v) for v in valid_metrics if not np.isnan(fisher_z_transform(v))]
-                                    month_metric = fisher_z_inverse(np.mean(z_values)) if len(z_values) > 0 else np.nan
-                                elif metric_type == 'r2':
-                                    r_values = month_data['pearson_r'].values
-                                    valid_r = r_values[~np.isnan(r_values)]
-                                    z_values = [fisher_z_transform(r) for r in valid_r if not np.isnan(fisher_z_transform(r))]
-                                    month_metric = fisher_z_inverse(np.mean(z_values)) ** 2 if len(z_values) > 0 else np.nan
-                                else:
-                                    month_metric = np.nanmean(np.abs(month_data[metric_type].values)) if metric_type == 'residual' else np.nanmean(month_data[metric_type].values)
+                                # CORREÇÃO: Usar a função auxiliar para cálculo mensal com Fisher Z
+                                month_metric = calculate_monthly_metrics(month_data, metric_type)
                                 
-                                # Calculate Q3-based metrics
-                                month_q3_a_metric = np.nanmean(month_data[f'{metric_type}_q3_a'].values)
-                                month_q3_b_metric = np.nanmean(month_data[f'{metric_type}_q3_b'].values)
+                                # Calcular Q3-based metrics com Fisher Z quando apropriado
+                                if metric_type == 'pearson':
+                                    month_q3_a_metric = calculate_pearson_avg_with_fisher(month_data[f'{metric_type}_q3_a'].values)
+                                    month_q3_b_metric = calculate_pearson_avg_with_fisher(month_data[f'{metric_type}_q3_b'].values)
+                                elif metric_type == 'r2':
+                                    q3_a_values = month_data[f'{metric_type}_q3_a'].values
+                                    q3_b_values = month_data[f'{metric_type}_q3_b'].values
+                                    # Estimar os valores r a partir de R²
+                                    r_q3_a = np.sqrt(q3_a_values[~np.isnan(q3_a_values)])
+                                    r_q3_b = np.sqrt(q3_b_values[~np.isnan(q3_b_values)])
+                                    month_q3_a_metric = calculate_pearson_avg_with_fisher(r_q3_a) ** 2 if len(r_q3_a) > 0 else np.nan
+                                    month_q3_b_metric = calculate_pearson_avg_with_fisher(r_q3_b) ** 2 if len(r_q3_b) > 0 else np.nan
+                                else:
+                                    month_q3_a_metric = np.nanmean(month_data[f'{metric_type}_q3_a'].values)
+                                    month_q3_b_metric = np.nanmean(month_data[f'{metric_type}_q3_b'].values)
                                 
                                 # Calculate data range for this month
                                 month_data_range = np.nanmean(month_data['data_range'].values)
@@ -1622,14 +1696,15 @@ if __name__ == '__main__':
                                 q3_a_percent_display = f"({q3_a_percent:.2f}{percent_suffix})" if not np.isnan(q3_a_percent) else "(NaN%)"
                                 q3_b_percent_display = f"({q3_b_percent:.2f}{percent_suffix})" if not np.isnan(q3_b_percent) else "(NaN%)"
                                 
-                                # Output formatted results
-                                print(f"      {month_name}: {month_metric:.4f} {month_percent_display} - {month_count} comparisons")
+                                # Output formatted results with Fisher Z notation when appropriate
+                                fisher_note = " (Fisher Z applied)" if metric_type in ['pearson', 'r2'] else ""
+                                print(f"      {month_name}: {month_metric:.4f} {month_percent_display}{fisher_note} - {month_count} comparisons")
                                 
                                 # Only show Q3 metrics if they have valid values
                                 if not np.isnan(month_q3_a_metric):
-                                    print(f"        Q3 Map A: {month_q3_a_metric:.4f} {q3_a_percent_display}")
+                                    print(f"        Q3 Map A: {month_q3_a_metric:.4f} {q3_a_percent_display}{fisher_note}")
                                 if not np.isnan(month_q3_b_metric):
-                                    print(f"        Q3 Map B: {month_q3_b_metric:.4f} {q3_b_percent_display}")
+                                    print(f"        Q3 Map B: {month_q3_b_metric:.4f} {q3_b_percent_display}{fisher_note}")
     
     # Exportar métricas de pares para um arquivo CSV
     pair_data = []
@@ -1653,46 +1728,12 @@ if __name__ == '__main__':
     # Exportar resultados de análise temporal por par (se disponível)
     if 'datetime' in df.columns:
         print("\n===== TEMPORAL ANALYSIS BY PAIR =====")
-        temporal_data = []
         
-        for pair_key in pair_metrics:
-            source_a, source_b = pair_key.split(' x ')
-            pair_df = df[(df['source_a'] == source_a) & (df['source_b'] == source_b)]
-            
-            if pair_df.empty:
-                continue
-                
-            # Converter para datetime se não for
-            if not pd.api.types.is_datetime64_any_dtype(pair_df['datetime']):
-                pair_df['datetime'] = pd.to_datetime(pair_df['datetime'])
-                
-            # Agrupar por mês
-            pair_df['year_month'] = pair_df['datetime'].dt.strftime('%Y-%m')
-            
-            # Collect metrics including Q3 variants
-            metrics_to_aggregate = [
-                metric_type,
-                f'{metric_type}_q3_a',
-                f'{metric_type}_q3_b'
-            ]
-            
-            # Create aggregations for each metric
-            aggs = {}
-            for m in metrics_to_aggregate:
-                aggs[m] = ['mean', 'count', 'std']
-            
-            monthly_stats = pair_df.groupby('year_month').agg(aggs).reset_index()
-            
-            # Adicionar informações do par
-            monthly_stats['pair'] = pair_key
-            monthly_stats['source_a'] = source_a
-            monthly_stats['source_b'] = source_b
-            
-            temporal_data.append(monthly_stats)
-            
-        if temporal_data:
+        # CORREÇÃO: Já estamos usando a nova função que suporta Fisher Z
+        temporal_df = calculate_temporal_stats(df, metric_type)
+        
+        if not temporal_df.empty:
             try:
-                temporal_df = pd.concat(temporal_data)
                 temporal_file = f'temporal_analysis_{metric_type}_with_q3.csv'
                 temporal_df.to_csv(temporal_file, index=False)
                 print(f"Temporal analysis exported to {temporal_file}")
