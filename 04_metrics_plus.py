@@ -1182,7 +1182,7 @@ if __name__ == '__main__':
             print("-" * 80)
     print("-" * 120)
 
-    # NOVA SEÇÃO: ANÁLISE POR FONTE
+# NOVA SEÇÃO: ANÁLISE POR FONTE
     print("\n===== SOURCE ANALYSIS =====")
     # Para cada fonte, mostre a qualidade média de suas comparações
     for source in dataset_metrics:
@@ -1213,6 +1213,64 @@ if __name__ == '__main__':
         
             percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
             print(f"  {pair}: {metric_val:.4f} {percent_display} - {count} comparisons")
+            
+            # Add monthly breakdown for this pair
+            if 'datetime' in df.columns:
+                source_a, source_b = pair.split(' x ')
+                pair_data = df[(df['source_a'] == source_a) & (df['source_b'] == source_b)]
+                
+                if not pair_data.empty:
+                    # Ensure datetime format
+                    if not pd.api.types.is_datetime64_any_dtype(pair_data['datetime']):
+                        pair_data['datetime'] = pd.to_datetime(pair_data['datetime'])
+                    
+                    # Sort by date to maintain chronological order
+                    pair_data = pair_data.sort_values('datetime')
+                    
+                    # Group by year and month
+                    pair_data['year'] = pair_data['datetime'].dt.year
+                    pair_data['month'] = pair_data['datetime'].dt.month
+                    
+                    # Process all years and months in the data
+                    for year in sorted(pair_data['year'].unique()):
+                        for month in sorted(pair_data[pair_data['year'] == year]['month'].unique()):
+                            month_data = pair_data[(pair_data['year'] == year) & (pair_data['month'] == month)]
+                            month_count = len(month_data)
+                            
+                            if month_count > 0:
+                                # Format month name
+                                month_name = f"{month}/{year}"
+                                
+                                # Calculate metric based on type
+                                if metric_type == 'pearson':
+                                    valid_metrics = month_data[metric_type].values
+                                    valid_metrics = valid_metrics[~np.isnan(valid_metrics)]
+                                    z_values = [fisher_z_transform(v) for v in valid_metrics if not np.isnan(fisher_z_transform(v))]
+                                    month_metric = fisher_z_inverse(np.mean(z_values)) if len(z_values) > 0 else np.nan
+                                elif metric_type == 'r2':
+                                    r_values = month_data['pearson_r'].values
+                                    valid_r = r_values[~np.isnan(r_values)]
+                                    z_values = [fisher_z_transform(r) for r in valid_r if not np.isnan(fisher_z_transform(r))]
+                                    month_metric = fisher_z_inverse(np.mean(z_values)) ** 2 if len(z_values) > 0 else np.nan
+                                else:
+                                    month_metric = np.nanmean(month_data[metric_type].values)
+                                
+                                # Format the metric display
+                                if np.isnan(month_metric):
+                                    print(f"          {month_name}: [NaN] - {month_count} comparisons")
+                                else:
+                                    # Calculate percentage based on metric type
+                                    if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+                                        month_percent = month_metric * 100
+                                    elif metric_type == 'mse':
+                                        data_range = np.nanmean(month_data['data_range'].values)
+                                        month_percent = (month_metric / (data_range ** 2) * 100) if data_range > 0 else np.nan
+                                    else:
+                                        data_range = np.nanmean(month_data['data_range'].values)
+                                        month_percent = (month_metric / data_range * 100) if data_range > 0 else np.nan
+                                    
+                                    month_percent_display = f"({month_percent:.2f}{percent_suffix})" if not np.isnan(month_percent) else "(NaN%)"
+                                    print(f"          {month_name}: {month_metric:.4f} {month_percent_display} - {month_count} comparisons")
     
     # Exportar métricas de pares para um arquivo CSV
     pair_data = []
