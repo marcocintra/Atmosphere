@@ -1574,7 +1574,6 @@ if __name__ == '__main__':
             except Exception as e:
                 print(f"Error in temporal analysis export: {str(e)}")
 
-    # NOVA SEÇÃO: ANÁLISE POR FONTE
     print("\n===== SOURCE ANALYSIS =====")
     # Para cada fonte, mostre a qualidade média de suas comparações
     for source in dataset_metrics:
@@ -1611,8 +1610,18 @@ if __name__ == '__main__':
             percent = pair_metrics[pair]['percent']
             count = pair_metrics[pair]['count']
             
+            # Extrair as fontes do par
+            s1, s2 = pair.split(' x ')
+            
+            # Garantir que a fonte atual esteja primeiro no display
+            if s1 != source:
+                # Reordenar para mostrar a fonte atual primeiro
+                display_pair = f"{source} x {s1}"
+            else:
+                display_pair = pair
+            
             if np.isnan(metric_val):
-                print(f"  {pair}: NaN (unable to calculate metric) - {count} comparisons")
+                print(f"  {display_pair}: NaN (unable to calculate metric) - {count} comparisons")
                 continue
                 
             if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
@@ -1624,11 +1633,22 @@ if __name__ == '__main__':
         
             percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
             fisher_note = " (Fisher Z applied)" if metric_type in ['pearson', 'r2'] else ""
-            print(f"  {pair}: {metric_val:.4f} {percent_display}{fisher_note} - {count} comparisons")
+            print(f"  {display_pair}: {metric_val:.4f} {percent_display}{fisher_note} - {count} comparisons")
             
             # Add monthly breakdown for this pair
             if 'datetime' in df.columns:
                 source_a, source_b = pair.split(' x ')
+                
+                # Determinar qual fonte é a atual (para Q3) e qual é a outra
+                if source_a == source:
+                    current_source = source_a
+                    other_source = source_b
+                    is_source_a_current = True
+                else:
+                    current_source = source_b
+                    other_source = source_a
+                    is_source_a_current = False
+                
                 pair_data = df[(df['source_a'] == source_a) & (df['source_b'] == source_b)]
                 
                 if not pair_data.empty:
@@ -1706,11 +1726,23 @@ if __name__ == '__main__':
                                 fisher_note = " (Fisher Z applied)" if metric_type in ['pearson', 'r2'] else ""
                                 print(f"      {month_name}: {month_metric:.4f} {month_percent_display}{fisher_note} - {month_count} comparisons")
                                 
+                                # Determinar os nomes das fontes para as métricas Q3
+                                if is_source_a_current:
+                                    q3_current_source_metric = month_q3_a_metric
+                                    q3_current_source_display = q3_a_percent_display
+                                    q3_other_source_metric = month_q3_b_metric
+                                    q3_other_source_display = q3_b_percent_display
+                                else:
+                                    q3_current_source_metric = month_q3_b_metric
+                                    q3_current_source_display = q3_b_percent_display
+                                    q3_other_source_metric = month_q3_a_metric
+                                    q3_other_source_display = q3_a_percent_display
+                                
                                 # Only show Q3 metrics if they have valid values
-                                if not np.isnan(month_q3_a_metric):
-                                    print(f"        Q3 Map A: {month_q3_a_metric:.4f} {q3_a_percent_display}{fisher_note}")
-                                if not np.isnan(month_q3_b_metric):
-                                    print(f"        Q3 Map B: {month_q3_b_metric:.4f} {q3_b_percent_display}{fisher_note}")
+                                if not np.isnan(q3_current_source_metric):
+                                    print(f"        Q3 {current_source}: {q3_current_source_metric:.4f} {q3_current_source_display}{fisher_note}")
+                                if not np.isnan(q3_other_source_metric):
+                                    print(f"        Q3 {other_source}: {q3_other_source_metric:.4f} {q3_other_source_display}{fisher_note}")
     
     # Exportar métricas de pares para um arquivo CSV
     pair_data = []
