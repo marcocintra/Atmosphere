@@ -11,53 +11,53 @@ import warnings
 warnings.filterwarnings('ignore')
 
 def calculate_q3_mask(map_data, verbose=False):
-    """Calcula Q3 (75º percentil) e retorna máscara para pixels >= Q3."""
+    """Calcula Q3 (75º percentil) e retorna máscara para valores >= Q3."""
     if verbose:
         print(f"Calculating Q3 mask for data shape {map_data.shape}")
     
-    # Create mask of non-NaN pixels
+    # Create mask of non-NaN values
     non_nan_mask = ~np.isnan(map_data)
     non_nan_count = np.sum(non_nan_mask)
     
     if verbose:
-        print(f"Non-NaN pixels: {non_nan_count}/{map_data.size} ({non_nan_count/map_data.size*100:.2f}%)")
+        print(f"Non-NaN values: {non_nan_count}/{map_data.size} ({non_nan_count/map_data.size*100:.2f}%)")
     
-    # Get valid (non-NaN) pixels for percentile calculation
-    valid_pixels = map_data[non_nan_mask]
+    # Get valid (non-NaN) values for percentile calculation
+    valid_values = map_data[non_nan_mask]
     
-    if len(valid_pixels) == 0:
+    if len(valid_values) == 0:
         if verbose:
-            print("No valid pixels found for Q3 calculation")
+            print("No valid values found for Q3 calculation")
         return None, np.nan
         
-    # Calculate Q3 from valid pixels
-    q3 = np.percentile(valid_pixels, 75)
+    # Calculate Q3 from valid values
+    q3 = np.percentile(valid_values, 75)
     if verbose:
         print(f"Q3 value: {q3:.4f}")
     
     # Special handling for cases where Q3 equals max value
-    unique_values = np.unique(valid_pixels)
-    if q3 == np.max(valid_pixels) and len(unique_values) > 1:
+    unique_values = np.unique(valid_values)
+    if q3 == np.max(valid_values) and len(unique_values) > 1:
         if verbose:
             print("Q3 equals max value, using second highest value instead")
         q3 = unique_values[-2]  # Use second highest value
     
-    # Create a mask where pixels are both non-NaN AND >= Q3
+    # Create a mask where values are both non-NaN AND >= Q3
     mask = non_nan_mask & (map_data >= q3)
     mask_count = np.sum(mask)
     
     if verbose:
         mask_percent = mask_count / map_data.size * 100
-        print(f"Pixels in Q3 mask: {mask_count} ({mask_percent:.2f}%)")
+        print(f"Values in Q3 mask: {mask_count} ({mask_percent:.2f}%)")
     
-    # Ensure we have enough pixels (at least 5% of original valid pixels)
-    min_required = max(100, len(valid_pixels) * 0.05)
+    # Ensure we have enough values (at least 5% of original valid values)
+    min_required = max(100, len(valid_values) * 0.05)
     if mask_count < min_required:
         if verbose:
-            print(f"Not enough pixels in Q3 mask, trying more lenient threshold (min: {min_required})")
+            print(f"Not enough values in Q3 mask, trying more lenient threshold (min: {min_required})")
         
         # Try a more lenient threshold
-        q3_adjusted = np.percentile(valid_pixels, 65)  # Try 65th percentile instead
+        q3_adjusted = np.percentile(valid_values, 65)  # Try 65th percentile instead
         if verbose:
             print(f"Adjusted to 65th percentile: {q3_adjusted:.4f}")
         
@@ -65,24 +65,24 @@ def calculate_q3_mask(map_data, verbose=False):
         mask_count = np.sum(mask)
         
         if verbose:
-            print(f"Pixels in adjusted Q3 mask: {mask_count} ({mask_count/map_data.size*100:.2f}%)")
+            print(f"Values in adjusted Q3 mask: {mask_count} ({mask_count/map_data.size*100:.2f}%)")
         
         if mask_count >= min_required:
             return mask, q3_adjusted
         
         if verbose:
-            print("Still not enough pixels with adjusted threshold")
+            print("Still not enough values with adjusted threshold")
         return None, q3
     
     return mask, q3
 
-def calculate_pearson(y_true, y_pred, filename="unknown", pixel_mask=None):
+def calculate_pearson(y_true, y_pred, filename="unknown", value_mask=None):
     """Calcula a correlação de Pearson, tratando casos especiais."""
-    if pixel_mask is not None:
-        if pixel_mask.sum() < 2:
+    if value_mask is not None:
+        if value_mask.sum() < 2:
             return np.nan
-        y_true = y_true[pixel_mask]
-        y_pred = y_pred[pixel_mask]
+        y_true = y_true[value_mask]
+        y_pred = y_pred[value_mask]
     
     if len(y_true) == 0 or len(y_pred) == 0 or np.all(np.isnan(y_true)) or np.all(np.isnan(y_pred)):
         return np.nan
@@ -112,61 +112,61 @@ def calculate_pearson(y_true, y_pred, filename="unknown", pixel_mask=None):
     except Exception as e:
         return np.nan
 
-def calculate_r2_score(y_true, y_pred, filename="unknown", pixel_mask=None):
+def calculate_r2_score(y_true, y_pred, filename="unknown", value_mask=None):
     """Calcula o R² como o quadrado da correlação de Pearson."""
-    if pixel_mask is not None:
-        if pixel_mask.sum() < 2:
+    if value_mask is not None:
+        if value_mask.sum() < 2:
             return np.nan, np.nan
-        y_true = y_true[pixel_mask]
-        y_pred = y_pred[pixel_mask]
+        y_true = y_true[value_mask]
+        y_pred = y_pred[value_mask]
     pearson_r = calculate_pearson(y_true, y_pred, filename)
     if np.isnan(pearson_r):
         return np.nan, np.nan
     return pearson_r ** 2, pearson_r
 
-def calculate_rmse(y_true, y_pred, pixel_mask=None):
+def calculate_rmse(y_true, y_pred, value_mask=None):
     """Calcula o RMSE, tratando casos especiais."""
-    if pixel_mask is not None:
-        if pixel_mask.sum() < 2:
+    if value_mask is not None:
+        if value_mask.sum() < 2:
             return np.nan
-        y_true = y_true[pixel_mask]
-        y_pred = y_pred[pixel_mask]
+        y_true = y_true[value_mask]
+        y_pred = y_pred[value_mask]
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     if np.sum(valid_mask) < 2:
         return np.nan
     return np.sqrt(mean_squared_error(y_true[valid_mask], y_pred[valid_mask]))
 
-def calculate_mse(y_true, y_pred, pixel_mask=None):
+def calculate_mse(y_true, y_pred, value_mask=None):
     """Calcula o MSE, tratando casos especiais."""
-    if pixel_mask is not None:
-        if pixel_mask.sum() < 2:
+    if value_mask is not None:
+        if value_mask.sum() < 2:
             return np.nan
-        y_true = y_true[pixel_mask]
-        y_pred = y_pred[pixel_mask]
+        y_true = y_true[value_mask]
+        y_pred = y_pred[value_mask]
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     if np.sum(valid_mask) < 2:
         return np.nan
     return mean_squared_error(y_true[valid_mask], y_pred[valid_mask])
 
-def calculate_mae(y_true, y_pred, pixel_mask=None):
+def calculate_mae(y_true, y_pred, value_mask=None):
     """Calcula o MAE, tratando casos especiais."""
-    if pixel_mask is not None:
-        if pixel_mask.sum() < 2:
+    if value_mask is not None:
+        if value_mask.sum() < 2:
             return np.nan
-        y_true = y_true[pixel_mask]
-        y_pred = y_pred[pixel_mask]
+        y_true = y_true[value_mask]
+        y_pred = y_pred[value_mask]
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     if np.sum(valid_mask) < 2:
         return np.nan
     return mean_absolute_error(y_true[valid_mask], y_pred[valid_mask])
 
-def calculate_residual_error(y_true, y_pred, normalize=False, filename="unknown", pixel_mask=None):
+def calculate_residual_error(y_true, y_pred, normalize=False, filename="unknown", value_mask=None):
     """Calcula o erro residual médio absoluto com validação robusta."""
-    if pixel_mask is not None:
-        if pixel_mask.sum() < 2:
+    if value_mask is not None:
+        if value_mask.sum() < 2:
             return np.nan
-        y_true = y_true[pixel_mask]
-        y_pred = y_pred[pixel_mask]
+        y_true = y_true[value_mask]
+        y_pred = y_pred[value_mask]
     if len(y_true) == 0 or len(y_pred) == 0 or np.all(np.isnan(y_true)) or np.all(np.isnan(y_pred)):
         return np.nan
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
@@ -189,13 +189,13 @@ def calculate_residual_error(y_true, y_pred, normalize=False, filename="unknown"
     
     return np.mean(np.abs(y_true_valid - y_pred_valid))
 
-def calculate_max_residual_error(y_true, y_pred, normalize=False, filename="unknown", pixel_mask=None):
+def calculate_max_residual_error(y_true, y_pred, normalize=False, filename="unknown", value_mask=None):
     """Calcula o erro residual máximo com validação robusta."""
-    if pixel_mask is not None:
-        if pixel_mask.sum() < 2:
+    if value_mask is not None:
+        if value_mask.sum() < 2:
             return np.nan
-        y_true = y_true[pixel_mask]
-        y_pred = y_pred[pixel_mask]
+        y_true = y_true[value_mask]
+        y_pred = y_pred[value_mask]
     if len(y_true) == 0 or len(y_pred) == 0 or np.all(np.isnan(y_true)) or np.all(np.isnan(y_pred)):
         return np.nan
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
@@ -218,13 +218,13 @@ def calculate_max_residual_error(y_true, y_pred, normalize=False, filename="unkn
     
     return np.max(np.abs(y_true_valid - y_pred_valid))
 
-def calculate_min_residual_error(y_true, y_pred, percentile=5.0, normalize=False, filename="unknown", pixel_mask=None):
+def calculate_min_residual_error(y_true, y_pred, percentile=5.0, normalize=False, filename="unknown", value_mask=None):
     """Calcula o erro residual no percentil especificado com validação robusta."""
-    if pixel_mask is not None:
-        if pixel_mask.sum() < 2:
+    if value_mask is not None:
+        if value_mask.sum() < 2:
             return np.nan
-        y_true = y_true[pixel_mask]
-        y_pred = y_pred[pixel_mask]
+        y_true = y_true[value_mask]
+        y_pred = y_pred[value_mask]
     if len(y_true) == 0 or len(y_pred) == 0 or np.all(np.isnan(y_true)) or np.all(np.isnan(y_pred)):
         return np.nan
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
@@ -247,13 +247,13 @@ def calculate_min_residual_error(y_true, y_pred, percentile=5.0, normalize=False
     
     return np.percentile(np.abs(y_true_valid - y_pred_valid), percentile)
 
-def calculate_cosine_similarity(y_true, y_pred, pixel_mask=None):
+def calculate_cosine_similarity(y_true, y_pred, value_mask=None):
     """Calcula a similaridade de cosseno, tratando casos especiais."""
-    if pixel_mask is not None:
-        if pixel_mask.sum() < 2:
+    if value_mask is not None:
+        if value_mask.sum() < 2:
             return np.nan
-        y_true = y_true[pixel_mask]
-        y_pred = y_pred[pixel_mask]
+        y_true = y_true[value_mask]
+        y_pred = y_pred[value_mask]
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     if np.sum(valid_mask) < 2:
         return np.nan
@@ -266,13 +266,13 @@ def calculate_cosine_similarity(y_true, y_pred, pixel_mask=None):
         return np.nan
     return dot_product / (norm_y_true * norm_y_pred)
 
-def calculate_huber_loss(y_true, y_pred, delta=1.0, pixel_mask=None):
+def calculate_huber_loss(y_true, y_pred, delta=1.0, value_mask=None):
     """Calcula a perda de Huber, tratando casos especiais."""
-    if pixel_mask is not None:
-        if pixel_mask.sum() < 2:
+    if value_mask is not None:
+        if value_mask.sum() < 2:
             return np.nan
-        y_true = y_true[pixel_mask]
-        y_pred = y_pred[pixel_mask]
+        y_true = y_true[value_mask]
+        y_pred = y_pred[value_mask]
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     if np.sum(valid_mask) < 2:
         return np.nan
@@ -299,27 +299,27 @@ def calculate_ssim(y_true, y_pred, verbose=False):
     
     # Cria uma máscara de valores válidos (não NaN)
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
-    valid_pixel_count = np.sum(valid_mask)
-    valid_percentage = valid_pixel_count / valid_mask.size * 100
+    valid_value_count = np.sum(valid_mask)
+    valid_percentage = valid_value_count / valid_mask.size * 100
     
     if verbose:
-        print(f"Valid pixels: {valid_pixel_count}/{valid_mask.size} ({valid_percentage:.2f}%)")
+        print(f"Valid values: {valid_value_count}/{valid_mask.size} ({valid_percentage:.2f}%)")
     
-    # Verifica se há pixels válidos suficientes
-    min_pixels = 100  # Mínimo de pixels para um SSIM significativo
-    if valid_pixel_count < min_pixels:
+    # Verifica se há valores válidos suficientes
+    min_values = 100  # Mínimo de valores para um SSIM significativo
+    if valid_value_count < min_values:
         if verbose:
-            print(f"SSIM failed: Too few valid pixels ({valid_pixel_count})")
+            print(f"SSIM failed: Too few valid values ({valid_value_count})")
         return np.nan
     
-    # Extrair apenas os pixels válidos para calcular estatísticas
-    y_true_pixels = y_true[valid_mask]
-    y_pred_pixels = y_pred[valid_mask]
+    # Extrair apenas os valores válidos para calcular estatísticas
+    y_true_values = y_true[valid_mask]
+    y_pred_values = y_pred[valid_mask]
     
     # Verificar se há variância suficiente para um cálculo significativo
     min_variance = 1e-6
-    true_var = np.var(y_true_pixels)
-    pred_var = np.var(y_pred_pixels)
+    true_var = np.var(y_true_values)
+    pred_var = np.var(y_pred_values)
     
     if verbose:
         print(f"Variance check: y_true_var={true_var:.6f}, y_pred_var={pred_var:.6f}, min={min_variance}")
@@ -329,14 +329,14 @@ def calculate_ssim(y_true, y_pred, verbose=False):
             print(f"Low variance detected in images")
         
         # Se ambos são praticamente constantes e iguais
-        if np.allclose(y_true_pixels, y_pred_pixels, rtol=1e-5, atol=1e-8):
+        if np.allclose(y_true_values, y_pred_values, rtol=1e-5, atol=1e-8):
             if verbose:
                 print("Images are constant and identical, returning 1.0")
             return 1.0
         
         # Se são constantes mas diferentes
-        mean_abs_diff = np.mean(np.abs(y_true_pixels - y_pred_pixels))
-        max_possible_diff = max(np.max(y_true_pixels), np.max(y_pred_pixels)) - min(np.min(y_true_pixels), np.min(y_pred_pixels))
+        mean_abs_diff = np.mean(np.abs(y_true_values - y_pred_values))
+        max_possible_diff = max(np.max(y_true_values), np.max(y_pred_values)) - min(np.min(y_true_values), np.min(y_pred_values))
         
         if max_possible_diff > 0:
             similarity = 1.0 - (mean_abs_diff / max_possible_diff)
@@ -356,13 +356,13 @@ def calculate_ssim(y_true, y_pred, verbose=False):
     
     # Usar o mesmo valor constante para ambas as imagens em regiões não válidas
     # Isso faz com que o SSIM dessas regiões seja 1.0 (idêntico) e não afete o cálculo
-    constant_value = np.mean(y_true_pixels)
+    constant_value = np.mean(y_true_values)
     y_true_for_ssim[~valid_mask] = constant_value
     y_pred_for_ssim[~valid_mask] = constant_value
     
     # Calcula o intervalo de dados apenas com valores válidos
-    data_range = max(np.max(y_true_pixels) - np.min(y_true_pixels), 
-                     np.max(y_pred_pixels) - np.min(y_pred_pixels))
+    data_range = max(np.max(y_true_values) - np.min(y_true_values), 
+                     np.max(y_pred_values) - np.min(y_pred_values))
     if data_range == 0:
         data_range = 1.0
         if verbose:
@@ -370,9 +370,9 @@ def calculate_ssim(y_true, y_pred, verbose=False):
     
     # Tenta calcular SSIM
     try:
-        # Se a maioria dos pixels (>50%) não for válida, ainda calculamos, mas com alerta
+        # Se a maioria dos valores (>50%) não for válida, ainda calculamos, mas com alerta
         if valid_percentage < 50 and verbose:
-            print(f"SSIM warning: Less than 50% valid pixels ({valid_percentage:.2f}%)")
+            print(f"SSIM warning: Less than 50% valid values ({valid_percentage:.2f}%)")
         
         # Calcula o SSIM - as regiões não válidas não afetam o resultado
         # pois têm valores idênticos em ambas as imagens
@@ -422,44 +422,44 @@ def calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_q3, verbose=False):
     
     # For SSIM with Q3 mask, we need to:
     # 1. Keep the spatial relationship (2D structure)
-    # 2. Only consider pixels in the Q3 mask
-    # 3. Replace non-Q3 pixels with a constant value
+    # 2. Only consider values in the Q3 mask
+    # 3. Replace non-Q3 values with a constant value
     
     # Create copies for modification
     y_true_q3 = y_true_2d.copy()
     y_pred_q3 = y_pred_2d.copy()
     
-    # Get valid pixels in the Q3 mask
+    # Get valid values in the Q3 mask
     valid_q3_mask = mask_q3 & ~np.isnan(y_true_2d) & ~np.isnan(y_pred_2d)
-    valid_pixel_count = np.sum(valid_q3_mask)
+    valid_value_count = np.sum(valid_q3_mask)
     
     if verbose:
-        valid_percent = valid_pixel_count / valid_q3_mask.size * 100
-        print(f"Valid pixels in Q3 mask: {valid_pixel_count}/{valid_q3_mask.size} ({valid_percent:.2f}%)")
+        valid_percent = valid_value_count / valid_q3_mask.size * 100
+        print(f"Valid values in Q3 mask: {valid_value_count}/{valid_q3_mask.size} ({valid_percent:.2f}%)")
     
-    # Check if we have enough pixels
-    min_pixels = 100
-    if valid_pixel_count < min_pixels:
+    # Check if we have enough values
+    min_values = 100
+    if valid_value_count < min_values:
         if verbose:
-            print(f"Too few valid pixels in Q3 mask: {valid_pixel_count} < {min_pixels}")
+            print(f"Too few valid values in Q3 mask: {valid_value_count} < {min_values}")
         return np.nan
     
     # Calculate a constant value for non-Q3 regions
-    # (we use mean of valid Q3 pixels to ensure the non-Q3 regions 
+    # (we use mean of valid Q3 values to ensure the non-Q3 regions 
     # don't affect the SSIM calculation)
     y_true_q3_values = y_true_2d[valid_q3_mask]
     if len(y_true_q3_values) == 0:
         if verbose:
-            print("No valid pixels in Q3 mask for SSIM calculation")
+            print("No valid values in Q3 mask for SSIM calculation")
         return np.nan
     
     constant_value = np.mean(y_true_q3_values)
     
-    # Replace non-Q3 pixels with constant value
+    # Replace non-Q3 values with constant value
     y_true_q3[~valid_q3_mask] = constant_value
     y_pred_q3[~valid_q3_mask] = constant_value
     
-    # Calculate data range based only on Q3 pixels
+    # Calculate data range based only on Q3 values
     data_range = max(
         np.max(y_true_2d[valid_q3_mask]) - np.min(y_true_2d[valid_q3_mask]),
         np.max(y_pred_2d[valid_q3_mask]) - np.min(y_pred_2d[valid_q3_mask])
@@ -467,7 +467,7 @@ def calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_q3, verbose=False):
     if data_range == 0:
         data_range = 1.0
         if verbose:
-            print("Zero data range in Q3 pixels, using default value of 1.0")
+            print("Zero data range in Q3 values, using default value of 1.0")
     
     # Calculate SSIM on the modified images
     try:
@@ -734,7 +734,7 @@ def calculate_temporal_stats(df, metric_type):
     return pd.DataFrame(result) if result else pd.DataFrame()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Calculate metrics between datasets with simplified R², robust residuals, and Q3-based pixel selection')
+    parser = argparse.ArgumentParser(description='Calculate metrics between datasets with simplified R², robust residuals, and Q3-based value selection')
     parser.add_argument('--metric', type=str, 
                         choices=['pearson', 'rmse', 'residual', 'max_residual', 'min_residual', 
                                  'r2', 'mse', 'mae', 'cosine', 'huber', 'ssim'], 
@@ -854,7 +854,7 @@ if __name__ == '__main__':
         print(f"Output directory {base_dir} does not exist.")
         exit(1)
     
-    print(f"Calculating {metric_type.upper()} metrics with Q3-based pixel selection...")
+    print(f"Calculating {metric_type.upper()} metrics with Q3-based value selection...")
     print(f"Using dataset suffix: '{dataset_suffix}'")
     print(f"Higher values are better: {'YES' if higher_is_better else 'NO'}")
     if metric_type == 'r2' and swap_ytrue_ypred:
@@ -991,9 +991,9 @@ if __name__ == '__main__':
                     mask_b_q3, q3_b = calculate_q3_mask(map_b, verbose=file_verbose)
                     
                     # Validate Q3 masks
-                    min_pixels = 100
-                    valid_q3_a = mask_a_q3 is not None and mask_a_q3.sum() >= min_pixels
-                    valid_q3_b = mask_b_q3 is not None and mask_b_q3.sum() >= min_pixels
+                    min_values = 100
+                    valid_q3_a = mask_a_q3 is not None and mask_a_q3.sum() >= min_values
+                    valid_q3_b = mask_b_q3 is not None and mask_b_q3.sum() >= min_values
                     
                     if file_verbose:
                         print(f"Q3 mask validation:")
@@ -1047,49 +1047,49 @@ if __name__ == '__main__':
                         metric_q3_a = calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_a_q3, verbose=file_verbose)
                     elif valid_q3_a:
                         if metric_type == 'pearson':
-                            metric_q3_a = calculate_pearson(y_true, y_pred, file_a.name, pixel_mask=mask_a_q3.flatten())
+                            metric_q3_a = calculate_pearson(y_true, y_pred, file_a.name, value_mask=mask_a_q3.flatten())
                         elif metric_type == 'r2':
-                            metric_q3_a, _ = calculate_r2_score(y_true, y_pred, file_a.name, pixel_mask=mask_a_q3.flatten())
+                            metric_q3_a, _ = calculate_r2_score(y_true, y_pred, file_a.name, value_mask=mask_a_q3.flatten())
                         elif metric_type == 'rmse':
-                            metric_q3_a = calculate_rmse(y_true, y_pred, pixel_mask=mask_a_q3.flatten())
+                            metric_q3_a = calculate_rmse(y_true, y_pred, value_mask=mask_a_q3.flatten())
                         elif metric_type == 'mse':
-                            metric_q3_a = calculate_mse(y_true, y_pred, pixel_mask=mask_a_q3.flatten())
+                            metric_q3_a = calculate_mse(y_true, y_pred, value_mask=mask_a_q3.flatten())
                         elif metric_type == 'mae':
-                            metric_q3_a = calculate_mae(y_true, y_pred, pixel_mask=mask_a_q3.flatten())
+                            metric_q3_a = calculate_mae(y_true, y_pred, value_mask=mask_a_q3.flatten())
                         elif metric_type == 'residual':
-                            metric_q3_a = calculate_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, pixel_mask=mask_a_q3.flatten())
+                            metric_q3_a = calculate_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_a_q3.flatten())
                         elif metric_type == 'max_residual':
-                            metric_q3_a = calculate_max_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, pixel_mask=mask_a_q3.flatten())
+                            metric_q3_a = calculate_max_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_a_q3.flatten())
                         elif metric_type == 'min_residual':
-                            metric_q3_a = calculate_min_residual_error(y_true, y_pred, min_residual_percentile, normalize=normalize_residuals, filename=file_a.name, pixel_mask=mask_a_q3.flatten())
+                            metric_q3_a = calculate_min_residual_error(y_true, y_pred, min_residual_percentile, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_a_q3.flatten())
                         elif metric_type == 'cosine':
-                            metric_q3_a = calculate_cosine_similarity(y_true, y_pred, pixel_mask=mask_a_q3.flatten())
+                            metric_q3_a = calculate_cosine_similarity(y_true, y_pred, value_mask=mask_a_q3.flatten())
                         elif metric_type == 'huber':
-                            metric_q3_a = calculate_huber_loss(y_true, y_pred, huber_delta, pixel_mask=mask_a_q3.flatten())
+                            metric_q3_a = calculate_huber_loss(y_true, y_pred, huber_delta, value_mask=mask_a_q3.flatten())
                     
                     if valid_q3_b and metric_type == 'ssim':
                         metric_q3_b = calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_b_q3, verbose=file_verbose)
                     elif valid_q3_b:
                         if metric_type == 'pearson':
-                            metric_q3_b = calculate_pearson(y_true, y_pred, file_a.name, pixel_mask=mask_b_q3.flatten())
+                            metric_q3_b = calculate_pearson(y_true, y_pred, file_a.name, value_mask=mask_b_q3.flatten())
                         elif metric_type == 'r2':
-                            metric_q3_b, _ = calculate_r2_score(y_true, y_pred, file_a.name, pixel_mask=mask_b_q3.flatten())
+                            metric_q3_b, _ = calculate_r2_score(y_true, y_pred, file_a.name, value_mask=mask_b_q3.flatten())
                         elif metric_type == 'rmse':
-                            metric_q3_b = calculate_rmse(y_true, y_pred, pixel_mask=mask_b_q3.flatten())
+                            metric_q3_b = calculate_rmse(y_true, y_pred, value_mask=mask_b_q3.flatten())
                         elif metric_type == 'mse':
-                            metric_q3_b = calculate_mse(y_true, y_pred, pixel_mask=mask_b_q3.flatten())
+                            metric_q3_b = calculate_mse(y_true, y_pred, value_mask=mask_b_q3.flatten())
                         elif metric_type == 'mae':
-                            metric_q3_b = calculate_mae(y_true, y_pred, pixel_mask=mask_b_q3.flatten())
+                            metric_q3_b = calculate_mae(y_true, y_pred, value_mask=mask_b_q3.flatten())
                         elif metric_type == 'residual':
-                            metric_q3_b = calculate_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, pixel_mask=mask_b_q3.flatten())
+                            metric_q3_b = calculate_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_b_q3.flatten())
                         elif metric_type == 'max_residual':
-                            metric_q3_b = calculate_max_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, pixel_mask=mask_b_q3.flatten())
+                            metric_q3_b = calculate_max_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_b_q3.flatten())
                         elif metric_type == 'min_residual':
-                            metric_q3_b = calculate_min_residual_error(y_true, y_pred, min_residual_percentile, normalize=normalize_residuals, filename=file_a.name, pixel_mask=mask_b_q3.flatten())
+                            metric_q3_b = calculate_min_residual_error(y_true, y_pred, min_residual_percentile, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_b_q3.flatten())
                         elif metric_type == 'cosine':
-                            metric_q3_b = calculate_cosine_similarity(y_true, y_pred, pixel_mask=mask_b_q3.flatten())
+                            metric_q3_b = calculate_cosine_similarity(y_true, y_pred, value_mask=mask_b_q3.flatten())
                         elif metric_type == 'huber':
-                            metric_q3_b = calculate_huber_loss(y_true, y_pred, huber_delta, pixel_mask=mask_b_q3.flatten())
+                            metric_q3_b = calculate_huber_loss(y_true, y_pred, huber_delta, value_mask=mask_b_q3.flatten())
                     
                     # Display Q3 metric results in verbose mode
                     if file_verbose:
