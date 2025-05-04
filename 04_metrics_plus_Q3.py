@@ -1251,44 +1251,49 @@ if __name__ == '__main__':
     # Dicionário para armazenar valores Q3 mensais por fonte - CORRIGIDO
     monthly_q3_by_source = defaultdict(list)
     
-    # Primeiro vamos coletar todos os valores Q3 específicos para cada fonte - CORRIGIDO
-    # Dicionário para rastrear comparações únicas por mês e fonte
-    processed_monthly_comparisons = set()
+    # Dicionário para rastrear fontes por mês e arquivo (evita duplicação)
+    processed_monthly_files = {}
     
+    # Primeiro vamos coletar todos os valores Q3 específicos para cada fonte - CORRIGIDO
     for _, row in df.iterrows():
         source_a, source_b = row['source_a'], row['source_b']
+        file_name = row['filename_a']
         
-        # Para Q3_a, adicionamos apenas à fonte A (evitando dupla contagem)
+        # Adiciona Q3_a para source_a
         if not np.isnan(row[f'{metric_type}_q3_a']):
             q3_values_by_source[source_a].append(row[f'{metric_type}_q3_a'])
             
             # Se tiver data, colete também por mês
             if 'datetime' in df.columns:
                 date = pd.to_datetime(row['datetime'])
-                key = (source_a, date.year, date.month)
-                # Identificador único para esta comparação
-                comparison_id = f"{row['filename_a']}_{source_a}_q3a"
+                year, month = date.year, date.month
                 
-                # Verificar se já processamos esta comparação específica
-                if comparison_id not in processed_monthly_comparisons:
+                # Gerar chave única para este arquivo e mês
+                file_key = f"{file_name}_{year}_{month}"
+                
+                # Para source_a, verificar se já contabilizamos este arquivo
+                if (source_a, file_key) not in processed_monthly_files:
+                    key = (source_a, year, month)
                     monthly_q3_by_source[key].append(row[f'{metric_type}_q3_a'])
-                    processed_monthly_comparisons.add(comparison_id)
+                    processed_monthly_files[(source_a, file_key)] = True
         
-        # Para Q3_b, adicionamos apenas à fonte B (evitando dupla contagem)
+        # Adiciona Q3_b para source_b
         if not np.isnan(row[f'{metric_type}_q3_b']):
             q3_values_by_source[source_b].append(row[f'{metric_type}_q3_b'])
             
             # Se tiver data, colete também por mês
             if 'datetime' in df.columns:
                 date = pd.to_datetime(row['datetime'])
-                key = (source_b, date.year, date.month)
-                # Identificador único para esta comparação
-                comparison_id = f"{row['filename_a']}_{source_b}_q3b"
+                year, month = date.year, date.month
                 
-                # Verificar se já processamos esta comparação específica
-                if comparison_id not in processed_monthly_comparisons:
+                # Gerar chave única para este arquivo e mês
+                file_key = f"{file_name}_{year}_{month}"
+                
+                # Para source_b, verificar se já contabilizamos este arquivo    
+                if (source_b, file_key) not in processed_monthly_files:
+                    key = (source_b, year, month)
                     monthly_q3_by_source[key].append(row[f'{metric_type}_q3_b'])
-                    processed_monthly_comparisons.add(comparison_id)
+                    processed_monthly_files[(source_b, file_key)] = True
     
     # Calcular estatísticas temporais Q3 por fonte e mês - com correção da contagem
     monthly_q3_metrics = []
@@ -2171,4 +2176,4 @@ if __name__ == '__main__':
     if 'datetime' in df.columns:
         print(f"  - temporal_analysis_{metric_type}_with_q3.csv (monthly metrics by pair)")
     if debug_skipped:
-        print(f"  - {debug_file} (detailed log of missing and error files)")                       
+        print(f"  - {debug_file} (detailed log of missing and error files)")                                        
