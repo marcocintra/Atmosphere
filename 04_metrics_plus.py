@@ -444,7 +444,7 @@ def calculate_monthly_r2_avg(month_data):
     
     return fisher_z_inverse(np.mean(z_values)) ** 2
 
-# NOVA FUNÇÃO: Calcular métricas mensais por fonte
+# FIXED FUNCTION: Calcular métricas mensais por fonte
 def calculate_monthly_metrics_by_source(df, metric_type):
     """Calcula estatísticas mensais agregadas por fonte."""
     if 'datetime' not in df.columns:
@@ -461,7 +461,8 @@ def calculate_monthly_metrics_by_source(df, metric_type):
     temp_df['year'] = temp_df['datetime'].dt.year
     
     # Dicionário para armazenar métricas mensais por fonte
-    monthly_metrics_by_source = defaultdict(lambda: defaultdict(list))
+    # FIX: Use a simple defaultdict of lists instead of nested defaultdicts
+    monthly_metrics_by_source = defaultdict(list)
     
     # Processar cada linha do dataframe, coletando métricas para cada fonte
     for _, row in temp_df.iterrows():
