@@ -1248,14 +1248,17 @@ if __name__ == '__main__':
     
     # Dicionário para armazenar valores Q3 específicos de cada fonte
     q3_values_by_source = defaultdict(list)
-    # Dicionário para armazenar valores Q3 mensais por fonte
+    # Dicionário para armazenar valores Q3 mensais por fonte - CORRIGIDO
     monthly_q3_by_source = defaultdict(list)
     
-    # Primeiro vamos coletar todos os valores Q3 específicos para cada fonte
+    # Primeiro vamos coletar todos os valores Q3 específicos para cada fonte - CORRIGIDO
+    # Dicionário para rastrear comparações únicas por mês e fonte
+    processed_monthly_comparisons = set()
+    
     for _, row in df.iterrows():
         source_a, source_b = row['source_a'], row['source_b']
         
-        # Verifica se esta fonte está na posição A e coleta Q3_a
+        # Para Q3_a, adicionamos apenas à fonte A (evitando dupla contagem)
         if not np.isnan(row[f'{metric_type}_q3_a']):
             q3_values_by_source[source_a].append(row[f'{metric_type}_q3_a'])
             
@@ -1263,9 +1266,15 @@ if __name__ == '__main__':
             if 'datetime' in df.columns:
                 date = pd.to_datetime(row['datetime'])
                 key = (source_a, date.year, date.month)
-                monthly_q3_by_source[key].append(row[f'{metric_type}_q3_a'])
+                # Identificador único para esta comparação
+                comparison_id = f"{row['filename_a']}_{source_a}_q3a"
+                
+                # Verificar se já processamos esta comparação específica
+                if comparison_id not in processed_monthly_comparisons:
+                    monthly_q3_by_source[key].append(row[f'{metric_type}_q3_a'])
+                    processed_monthly_comparisons.add(comparison_id)
         
-        # Verifica se esta fonte está na posição B e coleta Q3_b
+        # Para Q3_b, adicionamos apenas à fonte B (evitando dupla contagem)
         if not np.isnan(row[f'{metric_type}_q3_b']):
             q3_values_by_source[source_b].append(row[f'{metric_type}_q3_b'])
             
@@ -1273,11 +1282,19 @@ if __name__ == '__main__':
             if 'datetime' in df.columns:
                 date = pd.to_datetime(row['datetime'])
                 key = (source_b, date.year, date.month)
-                monthly_q3_by_source[key].append(row[f'{metric_type}_q3_b'])
+                # Identificador único para esta comparação
+                comparison_id = f"{row['filename_a']}_{source_b}_q3b"
+                
+                # Verificar se já processamos esta comparação específica
+                if comparison_id not in processed_monthly_comparisons:
+                    monthly_q3_by_source[key].append(row[f'{metric_type}_q3_b'])
+                    processed_monthly_comparisons.add(comparison_id)
     
-    # Calcular estatísticas temporais Q3 por fonte
+    # Calcular estatísticas temporais Q3 por fonte e mês - com correção da contagem
     monthly_q3_metrics = []
+    
     for (source, year, month), values in monthly_q3_by_source.items():
+        # Calcular a métrica média com Fisher Z quando apropriado
         if metric_type == 'pearson':
             mean_value = calculate_pearson_avg_with_fisher(values)
         elif metric_type == 'r2':
@@ -1286,6 +1303,9 @@ if __name__ == '__main__':
             mean_value = calculate_pearson_avg_with_fisher(r_values) ** 2 if len(r_values) > 0 else np.nan
         else:
             mean_value = np.nanmean(values)
+        
+        # Determinar o número real de comparações
+        comparison_count = len(values)
             
         monthly_q3_metrics.append({
             'source': source,
@@ -1293,7 +1313,7 @@ if __name__ == '__main__':
             'month': month,
             'year_month': f"{year}-{month:02d}",
             f'{metric_type}_q3_mean': mean_value,
-            'count': len(values)
+            'count': comparison_count
         })
     
     # Calcular médias dos valores Q3 por fonte usando Fisher Z para Pearson
@@ -1445,50 +1465,50 @@ if __name__ == '__main__':
             
             if metric_type == 'pearson':
                 print(f'Average Pearson Correlation: {metric_value:.4f} {percent_display} (Fisher Z applied)')
-                print(f'Average Pearson (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)} (Fisher Z applied)')
-                print(f'Average Pearson (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)} (Fisher Z applied)')
+                print(f'Average Pearson (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)} (Fisher Z applied)')
+                print(f'Average Pearson (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)} (Fisher Z applied)')
             elif metric_type == 'r2':
                 print(f'Average R² Score: {metric_value:.4f} {percent_display} (Fisher Z applied on Pearson r)')
-                print(f'Average R² (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)} (Fisher Z applied)')
-                print(f'Average R² (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)} (Fisher Z applied)')
+                print(f'Average R² (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)} (Fisher Z applied)')
+                print(f'Average R² (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)} (Fisher Z applied)')
             elif metric_type == 'ssim':
                 print(f'Average Structural Similarity Index: {metric_value:.4f} {percent_display}')
-                print(f'Average SSIM (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
-                print(f'Average SSIM (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}')
+                print(f'Average SSIM (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
+                print(f'Average SSIM (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}')
             elif metric_type == 'cosine':
                 print(f'Average Cosine Similarity: {metric_value:.4f} {percent_display}')
-                print(f'Average Cosine (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
-                print(f'Average Cosine (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}')
+                print(f'Average Cosine (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
+                print(f'Average Cosine (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}')
             elif metric_type == 'rmse':
                 print(f'Average RMSE: {metric_value:.4f} {percent_display}')
-                print(f'Average RMSE (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
-                print(f'Average RMSE (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
+                print(f'Average RMSE (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
+                print(f'Average RMSE (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'mse':
                 print(f'Average Mean Squared Error: {metric_value:.4f} {percent_display}')
-                print(f'Average MSE (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range**2)}')
-                print(f'Average MSE (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range**2)}')
+                print(f'Average MSE (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, mean_data_range**2)}')
+                print(f'Average MSE (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, mean_data_range**2)}')
             elif metric_type == 'mae':
                 print(f'Average Mean Absolute Error: {metric_value:.4f} {percent_display}')
-                print(f'Average MAE (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
-                print(f'Average MAE (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
+                print(f'Average MAE (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
+                print(f'Average MAE (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'residual':
                 print(f'Average Mean Absolute Residual Error: {metric_value:.4f} {percent_display}')
-                print(f'Average Residual (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
-                print(f'Average Residual (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
+                print(f'Average Residual (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
+                print(f'Average Residual (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'max_residual':
                 print(f'Average Maximum Residual Error: {metric_value:.4f} {percent_display}')
-                print(f'Average Max Residual (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
-                print(f'Average Max Residual (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
+                print(f'Average Max Residual (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
+                print(f'Average Max Residual (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'min_residual':
                 suffix = f" ({min_residual_percentile}th percentile)"
                 print(f'Average Minimum Residual Error{suffix}: {metric_value:.4f} {percent_display}')
-                print(f'Average Min Residual (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
-                print(f'Average Min Residual (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
+                print(f'Average Min Residual (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
+                print(f'Average Min Residual (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             elif metric_type == 'huber':
                 suffix = f" (delta={huber_delta})"
                 print(f'Average Huber Loss{suffix}: {metric_value:.4f} {percent_display}')
-                print(f'Average Huber Loss (Q3 Map A): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
-                print(f'Average Huber Loss (Q3 Map B): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
+                print(f'Average Huber Loss (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, mean_data_range)}')
+                print(f'Average Huber Loss (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, mean_data_range)}')
             
             sorted_maps = selection.sort_values(by=f'{metric_type}_p', ascending=not higher_is_better).head(top_n)
             comp_key = f"{dataset_a} x {dataset_b}"
@@ -1612,18 +1632,14 @@ if __name__ == '__main__':
                             if not np.isnan(month_q3_a_metric):
                                 q3_a_percent = month_q3_a_metric * 100 if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] else (month_q3_a_metric / mean_data_range * 100)
                                 q3_a_display = f"({q3_a_percent:.2f}{percent_suffix})" if not np.isnan(q3_a_percent) else "(NaN%)"
-                                print(f'  {month_name} Q3 {source_a}: {month_q3_a_metric:.4f} {q3_a_display}{fisher_note}')
+                                print(f'  Q3 {source_a}: {month_q3_a_metric:.4f} {q3_a_display}{fisher_note}')
                                 
                             if not np.isnan(month_q3_b_metric):
                                 q3_b_percent = month_q3_b_metric * 100 if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] else (month_q3_b_metric / mean_data_range * 100)
                                 q3_b_display = f"({q3_b_percent:.2f}{percent_suffix})" if not np.isnan(q3_b_percent) else "(NaN%)"
-                                print(f'  {month_name} Q3 {source_b}: {month_q3_b_metric:.4f} {q3_b_display}{fisher_note}')
+                                print(f'  Q3 {source_b}: {month_q3_b_metric:.4f} {q3_b_display}{fisher_note}')
                             
                             # Buscar as métricas Q3 mensais agregadas para cada fonte
-                            current_month_key_a = (source_a, year, month)
-                            current_month_key_b = (source_b, year, month)
-                            
-                            # Buscar valores Q3 mensais agregados para source_a
                             source_a_month_q3_agg = None
                             source_a_month_q3_count = 0
                             for metric in monthly_q3_metrics:
@@ -1632,7 +1648,6 @@ if __name__ == '__main__':
                                     source_a_month_q3_count = metric['count']
                                     break
                             
-                            # Buscar valores Q3 mensais agregados para source_b
                             source_b_month_q3_agg = None
                             source_b_month_q3_count = 0
                             for metric in monthly_q3_metrics:
@@ -1649,7 +1664,7 @@ if __name__ == '__main__':
                                     q3_agg_percent = (source_a_month_q3_agg / mean_data_range * 100) if not np.isnan(mean_data_range) and mean_data_range > 0 else np.nan
                                 
                                 q3_agg_display = f"({q3_agg_percent:.2f}{percent_suffix})" if not np.isnan(q3_agg_percent) else "(NaN%)"
-                                print(f'  {month}/{year}/Q3/{source_a}: {source_a_month_q3_agg:.4f} {q3_agg_display}{fisher_note} (from {source_a_month_q3_count} values)')
+                                print(f'  {month}/{year}/Q3/{source_a}: {source_a_month_q3_agg:.4f} {q3_agg_display}{fisher_note} (across {source_a_month_q3_count} comparisons)')
                             
                             if source_b_month_q3_agg is not None and not np.isnan(source_b_month_q3_agg):
                                 if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
@@ -1658,7 +1673,7 @@ if __name__ == '__main__':
                                     q3_agg_percent = (source_b_month_q3_agg / mean_data_range * 100) if not np.isnan(mean_data_range) and mean_data_range > 0 else np.nan
                                 
                                 q3_agg_display = f"({q3_agg_percent:.2f}{percent_suffix})" if not np.isnan(q3_agg_percent) else "(NaN%)"
-                                print(f'  {month}/{year}/Q3/{source_b}: {source_b_month_q3_agg:.4f} {q3_agg_display}{fisher_note} (from {source_b_month_q3_count} values)')
+                                print(f'  {month}/{year}/Q3/{source_b}: {source_b_month_q3_agg:.4f} {q3_agg_display}{fisher_note} (across {source_b_month_q3_count} comparisons)')
     
     # Calcular as métricas médias por dataset usando Fisher Z para Pearson
     print("\nCalculating average metrics...")
@@ -1931,7 +1946,7 @@ if __name__ == '__main__':
             
             q3_percent_display = f"({q3_percent:.2f}{q3_percent_suffix})" if not np.isnan(q3_percent) else "(NaN%)"
             q3_count = len(q3_values_by_source[source])
-            print(f"Average {metric_type} (Q3 values only): {q3_val:.4f} {q3_percent_display}{fisher_note} (based on {q3_count} values)")
+            print(f"Average {metric_type} (Q3 values only): {q3_val:.4f} {q3_percent_display}{fisher_note} (based on {q3_count} Q3 values)")
         else:
             print(f"Average {metric_type} (Q3 values only): No valid Q3 values available")
             
@@ -2122,10 +2137,10 @@ if __name__ == '__main__':
                                 
                                 # Now show the aggregated monthly Q3 values for each source (across all pairs)
                                 if current_month_q3_agg is not None and not np.isnan(current_month_q3_agg):
-                                    print(f"        {month}/{year}/Q3/{current_source}: {current_month_q3_agg:.4f} {current_q3_agg_display}{fisher_note} (from {current_month_q3_count} values)")
+                                    print(f"        {month}/{year}/Q3/{current_source}: {current_month_q3_agg:.4f} {current_q3_agg_display}{fisher_note} (across {current_month_q3_count} comparisons)")
                                 
                                 if other_month_q3_agg is not None and not np.isnan(other_month_q3_agg):
-                                    print(f"        {month}/{year}/Q3/{other_source}: {other_month_q3_agg:.4f} {other_q3_agg_display}{fisher_note} (from {other_month_q3_count} values)")
+                                    print(f"        {month}/{year}/Q3/{other_source}: {other_month_q3_agg:.4f} {other_q3_agg_display}{fisher_note} (across {other_month_q3_count} comparisons)")
     
     # Exportar resultados de análise temporal por par (se disponível)
     if 'datetime' in df.columns:
@@ -2156,4 +2171,4 @@ if __name__ == '__main__':
     if 'datetime' in df.columns:
         print(f"  - temporal_analysis_{metric_type}_with_q3.csv (monthly metrics by pair)")
     if debug_skipped:
-        print(f"  - {debug_file} (detailed log of missing and error files)")                         
+        print(f"  - {debug_file} (detailed log of missing and error files)")                       
