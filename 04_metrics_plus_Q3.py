@@ -1249,7 +1249,7 @@ if __name__ == '__main__':
     # Dicionário para armazenar valores Q3 específicos de cada fonte
     q3_values_by_source = defaultdict(list)
     # Dicionário para armazenar valores Q3 mensais por fonte
-    monthly_q3_by_source = defaultdict(lambda: defaultdict(list))
+    monthly_q3_by_source = defaultdict(list)
     
     # Primeiro vamos coletar todos os valores Q3 específicos para cada fonte
     for _, row in df.iterrows():
