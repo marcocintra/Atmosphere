@@ -733,7 +733,7 @@ def calculate_temporal_stats(df, metric_type):
     
     return pd.DataFrame(result) if result else pd.DataFrame()
 
-# NOVA FUNÇÃO: Calcula estatísticas mensais Q3 por fonte
+# NOVA FUNÇÃO: Calcular estatísticas mensais Q3 por fonte
 def calculate_monthly_q3_by_source(df, metric_type):
     """Calcula estatísticas mensais Q3 específicas por fonte."""
     if 'datetime' not in df.columns:
@@ -787,6 +787,78 @@ def calculate_monthly_q3_by_source(df, metric_type):
             'month': month,
             'year_month': f"{year}-{month:02d}",
             f'{metric_type}_q3_mean': mean_value,
+            'count': len(values)
+        })
+    
+    return pd.DataFrame(result) if result else pd.DataFrame()
+
+# NOVA FUNÇÃO: Calcular métricas mensais por fonte (sem filtro Q3)
+def calculate_monthly_general_metrics_by_source(df, metric_type):
+    """Calcula estatísticas mensais agregadas por fonte sem filtro Q3."""
+    if 'datetime' not in df.columns:
+        return pd.DataFrame()
+        
+    # Preparar dataframe para análise temporal
+    temp_df = df.copy()
+    if not pd.api.types.is_datetime64_any_dtype(temp_df['datetime']):
+        temp_df['datetime'] = pd.to_datetime(temp_df['datetime'])
+    
+    # Adicionar colunas de ano e mês
+    temp_df['year_month'] = temp_df['datetime'].dt.strftime('%Y-%m')
+    temp_df['month'] = temp_df['datetime'].dt.month
+    temp_df['year'] = temp_df['datetime'].dt.year
+    
+    # Dicionário para armazenar métricas mensais por fonte (sem filtro Q3)
+    monthly_general_metrics = defaultdict(list)
+    
+    # Dicionário para rastrear arquivos processados (evitar duplicações)
+    processed_files = {}
+    
+    # Processar cada linha do dataframe, coletando métricas para cada fonte
+    for _, row in temp_df.iterrows():
+        source_a, source_b = row['source_a'], row['source_b']
+        year = row['year']
+        month = row['month']
+        file_name = row['filename_a']
+        
+        # Adicionar métrica de source_a
+        if not np.isnan(row[metric_type]):
+            # Verificar se já processamos este arquivo para esta fonte/mês
+            file_key = f"{file_name}_{source_a}_{year}_{month}"
+            if file_key not in processed_files:
+                key = (source_a, year, month)
+                monthly_general_metrics[key].append(row[metric_type])
+                processed_files[file_key] = True
+        
+        # Adicionar métrica de source_b
+        if not np.isnan(row[metric_type]):
+            # Verificar se já processamos este arquivo para esta fonte/mês
+            file_key = f"{file_name}_{source_b}_{year}_{month}"
+            if file_key not in processed_files:
+                key = (source_b, year, month)
+                monthly_general_metrics[key].append(row[metric_type])
+                processed_files[file_key] = True
+    
+    # Calcular médias por fonte e mês
+    result = []
+    for (source, year, month), values in monthly_general_metrics.items():
+        # Calcular a métrica média com Fisher Z quando apropriado
+        if metric_type == 'pearson':
+            mean_value = calculate_pearson_avg_with_fisher(values)
+        elif metric_type == 'r2':
+            # Para R², convertemos para r, aplicamos Fisher Z, e depois voltamos para R²
+            r_values = np.sqrt([v for v in values if v >= 0 and not np.isnan(v)])
+            mean_value = calculate_pearson_avg_with_fisher(r_values) ** 2 if len(r_values) > 0 else np.nan
+        else:
+            # Para outras métricas, usamos a média regular
+            mean_value = np.nanmean(values)
+            
+        result.append({
+            'source': source,
+            'year': year,
+            'month': month,
+            'year_month': f"{year}-{month:02d}",
+            f'{metric_type}_mean': mean_value,
             'count': len(values)
         })
     
@@ -1320,6 +1392,16 @@ if __name__ == '__main__':
             f'{metric_type}_q3_mean': mean_value,
             'count': comparison_count
         })
+    
+    # Calcular métricas mensais gerais por fonte (sem filtro Q3)
+    monthly_general_metrics = None
+    if 'datetime' in df.columns:
+        monthly_general_metrics = calculate_monthly_general_metrics_by_source(df, metric_type)
+        # Exportar para CSV
+        if not monthly_general_metrics.empty:
+            monthly_general_file = f'monthly_metrics_{metric_type}_general_by_source.csv'
+            monthly_general_metrics.to_csv(monthly_general_file, index=False)
+            print(f"Monthly general metrics by source exported to {monthly_general_file}")
     
     # Calcular médias dos valores Q3 por fonte usando Fisher Z para Pearson
     q3_avg_metrics = {}
@@ -1862,7 +1944,7 @@ if __name__ == '__main__':
         
         if not temporal_df.empty:
             try:
-                temporal_file = f'temporal_analysis_{metric_type}.csv'
+                temporal_file = f'temporal_analysis_{metric_type}_with_q3.csv'
                 temporal_df.to_csv(temporal_file, index=False)
                 print(f"Temporal analysis exported to {temporal_file}")
             except Exception as e:
@@ -1922,35 +2004,60 @@ if __name__ == '__main__':
         else:
             print(f"Average {metric_type} (Q3 values only): No valid Q3 values available")
         
-        # Exibir métricas Q3 mensais agregadas para esta fonte uma única vez
+        # Exibir métricas mensais agregadas (gerais e Q3) para esta fonte
         if 'datetime' in df.columns:
-            print("\n  Monthly Q3 Aggregated Values:")
+            print("\n  Monthly Aggregated Values:")
             
-            # Obter todas as combinações de ano/mês nos dados
+            # Criar conjunto de todos os pares ano/mês disponíveis para esta fonte
             years_months = set()
+            
+            # Adicionar pares de Q3
             for key in monthly_q3_by_source.keys():
                 if key[0] == source:  # Esta é a fonte que estamos analisando
                     years_months.add((key[1], key[2]))  # Adiciona (ano, mês)
             
+            # Adicionar pares gerais (sem Q3)
+            if monthly_general_metrics is not None and not monthly_general_metrics.empty:
+                for _, row in monthly_general_metrics.iterrows():
+                    if row['source'] == source:
+                        years_months.add((row['year'], row['month']))
+            
             # Ordenar os meses cronologicamente
             for year, month in sorted(years_months):
+                # Processar métricas gerais (sem filtro Q3)
+                general_value = None
+                general_count = 0
+                
+                if monthly_general_metrics is not None and not monthly_general_metrics.empty:
+                    # Filtrar dados para esta fonte/mês
+                    month_metrics = monthly_general_metrics[
+                        (monthly_general_metrics['source'] == source) & 
+                        (monthly_general_metrics['year'] == year) & 
+                        (monthly_general_metrics['month'] == month)
+                    ]
+                    
+                    if not month_metrics.empty:
+                        general_value = month_metrics.iloc[0][f'{metric_type}_mean']
+                        general_count = month_metrics.iloc[0]['count']
+                
+                # Processar métricas Q3
+                q3_value = None
+                q3_count = 0
+                source_pairs_this_month = []
+                
                 # Chave para esta fonte, ano e mês
                 key = (source, year, month)
                 
-                # Verificar se temos dados para essa combinação
+                # Verificar se temos dados Q3 para essa combinação
                 if key in monthly_q3_by_source:
-                    # Obter o valor Q3 agregado para esta fonte/mês dos monthly_q3_metrics
-                    q3_agg_value = None
-                    comparison_count = 0
+                    # Obter o valor Q3 agregado dos monthly_q3_metrics
                     for metric in monthly_q3_metrics:
                         if metric['source'] == source and metric['year'] == year and metric['month'] == month:
-                            q3_agg_value = metric[f'{metric_type}_q3_mean']
-                            comparison_count = metric['count']
+                            q3_value = metric[f'{metric_type}_q3_mean']
+                            q3_count = metric['count']
                             
-                            # Calcular contagem total de comparações onde esta fonte aparece
-                            # Contar todas as comparações onde esta fonte aparece no mês específico
+                            # Calcular total de comparações
                             total_comparison_count = 0
-                            source_pairs_this_month = []
                             
                             # Para cada par onde esta fonte aparece
                             for pair in source_pairs:
@@ -1970,55 +2077,84 @@ if __name__ == '__main__':
                                         source_pairs_this_month.append(pair)
                             
                             # Atualizar a contagem para mostrar o total real de comparações
-                            comparison_count = total_comparison_count
+                            q3_count = total_comparison_count
                             break
-                    
-                    # Se encontramos um valor Q3 agregado, exibi-lo
-                    if q3_agg_value is not None and not np.isnan(q3_agg_value):
-                        # Formatar o valor de acordo com o tipo de métrica
-                        if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
-                            percent = q3_agg_value * 100
-                            percent_suffix = "%"
-                        elif metric_type == 'mse':
-                            # Encontrar o data_range médio para o mês
-                            data_ranges = []
-                            for pair in source_pairs_this_month:
-                                src_a, src_b = pair.split(' x ')
-                                month_data = df[
-                                    (df['source_a'] == src_a) & 
-                                    (df['source_b'] == src_b) &
-                                    (df['datetime'].dt.year == year) & 
-                                    (df['datetime'].dt.month == month)
-                                ]
-                                if not month_data.empty:
-                                    data_ranges.extend(month_data['data_range'].values)
-                            
-                            avg_data_range = np.nanmean(data_ranges) if data_ranges else 1.0
-                            percent = (q3_agg_value / (avg_data_range ** 2) * 100) if avg_data_range > 0 else np.nan
+                
+                # Exibir métricas gerais se disponíveis
+                if general_value is not None and not np.isnan(general_value):
+                    # Formatar valores gerais
+                    if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+                        percent = general_value * 100
+                        percent_suffix = "%"
+                    else:
+                        # Encontrar o data_range médio para o mês
+                        data_ranges = []
+                        for pair in source_pairs:
+                            src_a, src_b = pair.split(' x ')
+                            month_data = df[
+                                (df['source_a'] == src_a) & 
+                                (df['source_b'] == src_b) &
+                                (df['datetime'].dt.year == year) & 
+                                (df['datetime'].dt.month == month)
+                            ]
+                            if not month_data.empty:
+                                data_ranges.extend(month_data['data_range'].values)
+                        
+                        avg_data_range = np.nanmean(data_ranges) if data_ranges else 1.0
+                        
+                        if metric_type == 'mse' and avg_data_range > 0:
+                            percent = (general_value / (avg_data_range ** 2) * 100)
                             percent_suffix = "% of squared data range"
-                        else:
-                            # Encontrar o data_range médio para o mês
-                            data_ranges = []
-                            for pair in source_pairs_this_month:
-                                src_a, src_b = pair.split(' x ')
-                                month_data = df[
-                                    (df['source_a'] == src_a) & 
-                                    (df['source_b'] == src_b) &
-                                    (df['datetime'].dt.year == year) & 
-                                    (df['datetime'].dt.month == month)
-                                ]
-                                if not month_data.empty:
-                                    data_ranges.extend(month_data['data_range'].values)
-                            
-                            avg_data_range = np.nanmean(data_ranges) if data_ranges else 1.0
-                            percent = (q3_agg_value / avg_data_range * 100) if avg_data_range > 0 else np.nan
+                        elif avg_data_range > 0:
+                            percent = (general_value / avg_data_range * 100)
                             percent_suffix = "% of data range"
+                        else:
+                            percent = np.nan
+                            percent_suffix = "%"
+                    
+                    percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
+                    fisher_note = " (Fisher Z applied)" if metric_type in ['pearson', 'r2'] else ""
+                    
+                    # Exibir resultado com contagem correta
+                    print(f"    {month}/{year}/{source}: {general_value:.4f} {percent_display}{fisher_note} (across {general_count} comparisons)")
+                
+                # Exibir métricas Q3 se disponíveis
+                if q3_value is not None and not np.isnan(q3_value):
+                    # Formatar valores Q3
+                    if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+                        percent = q3_value * 100
+                        percent_suffix = "%"
+                    else:
+                        # Usar os mesmos data_ranges obtidos acima
+                        data_ranges = []
+                        for pair in source_pairs_this_month:
+                            src_a, src_b = pair.split(' x ')
+                            month_data = df[
+                                (df['source_a'] == src_a) & 
+                                (df['source_b'] == src_b) &
+                                (df['datetime'].dt.year == year) & 
+                                (df['datetime'].dt.month == month)
+                            ]
+                            if not month_data.empty:
+                                data_ranges.extend(month_data['data_range'].values)
                         
-                        percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
-                        fisher_note = " (Fisher Z applied)" if metric_type in ['pearson', 'r2'] else ""
+                        avg_data_range = np.nanmean(data_ranges) if data_ranges else 1.0
                         
-                        # Exibir resultado com o total correto de comparações
-                        print(f"    {month}/{year}/Q3/{source}: {q3_agg_value:.4f} {percent_display}{fisher_note} (across {comparison_count} comparisons)")
+                        if metric_type == 'mse' and avg_data_range > 0:
+                            percent = (q3_value / (avg_data_range ** 2) * 100)
+                            percent_suffix = "% of squared data range"
+                        elif avg_data_range > 0:
+                            percent = (q3_value / avg_data_range * 100)
+                            percent_suffix = "% of data range"
+                        else:
+                            percent = np.nan
+                            percent_suffix = "%"
+                    
+                    percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
+                    fisher_note = " (Fisher Z applied)" if metric_type in ['pearson', 'r2'] else ""
+                    
+                    # Exibir resultados Q3
+                    print(f"    {month}/{year}/Q3/{source}: {q3_value:.4f} {percent_display}{fisher_note} (across {q3_count} comparisons)")
         
         print("\n  Comparisons:")
         
@@ -2166,8 +2302,6 @@ if __name__ == '__main__':
                                     print(f"        Q3 {current_source}: {q3_current_source_metric:.4f} {q3_current_source_display}{fisher_note}")
                                 if not np.isnan(q3_other_source_metric):
                                     print(f"        Q3 {other_source}: {q3_other_source_metric:.4f} {q3_other_source_display}{fisher_note}")
-                                
-                                # REMOVIDO: Não exibimos mais os valores mensais agregados aqui, pois já mostramos no início da análise da fonte
     
     # Exportar resultados de análise temporal por par (se disponível)
     if 'datetime' in df.columns:
@@ -2195,7 +2329,8 @@ if __name__ == '__main__':
     print(f"  - pair_metrics_{metric_type}.csv (pair summary metrics)")
     print(f"  - source_q3_metrics_{metric_type}.csv (source metrics based on Q3 values)")
     print(f"  - monthly_q3_metrics_{metric_type}_by_source.csv (monthly Q3 metrics by source)")
+    print(f"  - monthly_metrics_{metric_type}_general_by_source.csv (monthly general metrics by source)")
     if 'datetime' in df.columns:
         print(f"  - temporal_analysis_{metric_type}_with_q3.csv (monthly metrics by pair)")
     if debug_skipped:
-        print(f"  - {debug_file} (detailed log of missing and error files)")                                             
+        print(f"  - {debug_file} (detailed log of missing and error files)")    
