@@ -444,6 +444,68 @@ def calculate_monthly_r2_avg(month_data):
     
     return fisher_z_inverse(np.mean(z_values)) ** 2
 
+# NOVA FUNÇÃO: Calcular métricas mensais por fonte
+def calculate_monthly_metrics_by_source(df, metric_type):
+    """Calcula estatísticas mensais agregadas por fonte."""
+    if 'datetime' not in df.columns:
+        return pd.DataFrame()
+        
+    # Preparar dataframe para análise temporal
+    temp_df = df.copy()
+    if not pd.api.types.is_datetime64_any_dtype(temp_df['datetime']):
+        temp_df['datetime'] = pd.to_datetime(temp_df['datetime'])
+    
+    # Adicionar colunas de ano e mês
+    temp_df['year_month'] = temp_df['datetime'].dt.strftime('%Y-%m')
+    temp_df['month'] = temp_df['datetime'].dt.month
+    temp_df['year'] = temp_df['datetime'].dt.year
+    
+    # Dicionário para armazenar métricas mensais por fonte
+    monthly_metrics_by_source = defaultdict(lambda: defaultdict(list))
+    
+    # Processar cada linha do dataframe, coletando métricas para cada fonte
+    for _, row in temp_df.iterrows():
+        source_a, source_b = row['source_a'], row['source_b']
+        year = row['year']
+        month = row['month']
+        
+        # Adicionar métrica para source_a
+        if not np.isnan(row[metric_type]):
+            key = (source_a, year, month)
+            monthly_metrics_by_source[key].append(row[metric_type])
+        
+        # Adicionar métrica para source_b
+        if not np.isnan(row[metric_type]):
+            key = (source_b, year, month)
+            monthly_metrics_by_source[key].append(row[metric_type])
+    
+    # Calcular médias por fonte e mês
+    result = []
+    for (source, year, month), values in monthly_metrics_by_source.items():
+        if metric_type == 'pearson':
+            # Aplicar Fisher Z para média de correlações
+            z_values = [fisher_z_transform(v) for v in values if not np.isnan(fisher_z_transform(v))]
+            mean_value = fisher_z_inverse(np.mean(z_values)) if z_values else np.nan
+        elif metric_type == 'r2':
+            # Para R², convertemos para r, aplicamos Fisher Z, e depois voltamos para R²
+            r_values = np.sqrt([v for v in values if v >= 0 and not np.isnan(v)])
+            z_values = [fisher_z_transform(r) for r in r_values if not np.isnan(fisher_z_transform(r))]
+            mean_value = fisher_z_inverse(np.mean(z_values)) ** 2 if z_values else np.nan
+        else:
+            # Para outras métricas, usamos a média regular
+            mean_value = np.nanmean(values)
+            
+        result.append({
+            'source': source,
+            'year': year,
+            'month': month,
+            'year_month': f"{year}-{month:02d}",
+            f'{metric_type}_mean': mean_value,
+            'count': len(values)
+        })
+    
+    return pd.DataFrame(result) if result else pd.DataFrame()
+
 # Função para calcular estatísticas temporais (mensais) com Fisher Z
 def calculate_temporal_stats(df, metric_type):
     """Calcula estatísticas temporais com suporte a Fisher Z para correlações de Pearson."""
@@ -799,6 +861,16 @@ if __name__ == '__main__':
         df['datetime'] = pd.to_datetime(df['datetime'])
         df.sort_values('datetime', inplace=True)
 
+    # Calcular métricas mensais por fonte - NOVA CHAMADA
+    monthly_by_source_metrics = None
+    if 'datetime' in df.columns:
+        monthly_by_source_metrics = calculate_monthly_metrics_by_source(df, metric_type)
+        # Exportar para CSV
+        if not monthly_by_source_metrics.empty:
+            monthly_by_source_file = f'monthly_metrics_{metric_type}_by_source.csv'
+            monthly_by_source_metrics.to_csv(monthly_by_source_file, index=False)
+            print(f"Monthly metrics by source exported to {monthly_by_source_file}")
+
     # Adicionar análise detalhada de arquivos faltantes
     print("\n===== MISSING FILES ANALYSIS =====")
     total_missing = 0
@@ -968,6 +1040,7 @@ if __name__ == '__main__':
                         metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
                 else:
                     # Se precisamos calcular a porcentagem agora
+                    # Se precisamos calcular a porcentagem agora
                     if metric_type in ['pearson', 'r2', 'ssim', 'cosine']:
                         # Métricas normalizadas
                         metric_value = getattr(row, metric_type)
@@ -1004,6 +1077,7 @@ if __name__ == '__main__':
             
             print("-" * 120)
             
+            # Análise mensal para este par
             if 'datetime' in selection.columns:
                 for year in [2022, 2023, 2024]:
                     for month in range(1, 13):
@@ -1257,7 +1331,7 @@ if __name__ == '__main__':
             print("-" * 80)
     print("-" * 120)
 
-# NOVA SEÇÃO: ANÁLISE POR FONTE
+    # NOVA SEÇÃO: ANÁLISE POR FONTE
     print("\n===== SOURCE ANALYSIS =====")
     # Para cada fonte, mostre a qualidade média de suas comparações
     for source in dataset_metrics:
@@ -1267,7 +1341,55 @@ if __name__ == '__main__':
         
         print(f"\nSource: {source}")
         print(f"Average {metric_type}: {dataset_avg_metrics[source]:.4f} ({dataset_percentages[source]:.2f}%)")
-        print("Comparisons:")
+        
+        # NOVA SEÇÃO: Exibir métricas mensais agregadas por fonte
+        if monthly_by_source_metrics is not None and not monthly_by_source_metrics.empty:
+            source_monthly = monthly_by_source_metrics[monthly_by_source_metrics['source'] == source]
+            
+            if not source_monthly.empty:
+                print("\n  Monthly Aggregated Values:")
+                
+                # Ordenar por ano e mês
+                source_monthly = source_monthly.sort_values(by=['year', 'month'])
+                
+                for _, month_row in source_monthly.iterrows():
+                    year = month_row['year']
+                    month = month_row['month']
+                    month_name = f"{month}/{year}"
+                    metric_val = month_row[f'{metric_type}_mean']
+                    count = month_row['count']
+                    
+                    # Formatar o valor com porcentagem
+                    if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
+                        percent = metric_val * 100 if not np.isnan(metric_val) else np.nan
+                        percent_suffix = "%"
+                    elif metric_type == 'mse':
+                        # MSE precisa ser normalizado pelo quadrado do data_range
+                        data_ranges = df[
+                            ((df['source_a'] == source) | (df['source_b'] == source)) &
+                            (df['datetime'].dt.year == year) &
+                            (df['datetime'].dt.month == month)
+                        ]['data_range'].values
+                        avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
+                        percent = (metric_val / (avg_data_range ** 2) * 100) if not np.isnan(metric_val) and avg_data_range != 0 else np.nan
+                        percent_suffix = "% of squared data range"
+                    else:
+                        # Métricas baseadas em erro
+                        data_ranges = df[
+                            ((df['source_a'] == source) | (df['source_b'] == source)) &
+                            (df['datetime'].dt.year == year) &
+                            (df['datetime'].dt.month == month)
+                        ]['data_range'].values
+                        avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
+                        percent = (metric_val / avg_data_range * 100) if not np.isnan(metric_val) and avg_data_range != 0 else np.nan
+                        percent_suffix = "% of data range"
+                    
+                    percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
+                    fisher_note = " (Fisher Z applied)" if metric_type in ['pearson', 'r2'] else ""
+                    
+                    print(f"    {month_name}/{source}: {metric_val:.4f} {percent_display}{fisher_note} (across {count} comparisons)")
+        
+        print("\n  Comparisons:")
         
         # Listar todos os pares envolvendo esta fonte
         for pair in source_pairs:
@@ -1305,6 +1427,8 @@ if __name__ == '__main__':
                     # Group by year and month
                     pair_data['year'] = pair_data['datetime'].dt.year
                     pair_data['month'] = pair_data['datetime'].dt.month
+                    
+                    print("    Monthly breakdown:")
                     
                     # Process all years and months in the data
                     for year in sorted(pair_data['year'].unique()):
@@ -1392,6 +1516,7 @@ if __name__ == '__main__':
     print(f"  - result_{metric_type}_with_stats.csv (all individual comparisons)")
     print(f"  - pair_metrics_{metric_type}.csv (pair summary metrics)")
     if 'datetime' in df.columns:
+        print(f"  - monthly_metrics_{metric_type}_by_source.csv (monthly metrics by source)")
         print(f"  - temporal_analysis_{metric_type}.csv (monthly metrics by pair)")
     if debug_skipped:
         print(f"  - {debug_file} (detailed log of missing and error files)")
