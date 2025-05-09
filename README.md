@@ -1,1 +1,1 @@
-# JATM
+# Atmosphere journal repo
