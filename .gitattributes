@@ -1,0 +1,17 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Explicitly declare text files
+*.md text
+*.txt text
+*.py text
+*.js text
+*.html text
+*.css text
+
+# Declare binary files
+*.png binary
+*.jpg binary
+*.pdf binary
+*.zip binary
+*.npy binary
