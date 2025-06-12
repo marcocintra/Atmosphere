@@ -12,7 +12,7 @@
 
 - TEC_maps_processing.ipynb
 
-## IPython notebooks for case study processing
+## IPython notebooks for processing TEC maps in the case study
 
 - Case_study_EMBRACE_TEC_maps_2024.ipynb
 - Case_study_MAGGIA_TEC_maps_2024.ipynb
