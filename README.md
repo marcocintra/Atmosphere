@@ -8,7 +8,7 @@
 - NAGOYA_TEC_maps_2022_2024.ipynb
 - Generate_final_TEC_maps_and_datetimes.ipynb
 
-## IPython notebook for TEC maps processing
+## IPython notebook for TEC maps processing (plotting, interpolation and metrics calculation)
 
 - TEC_maps_processing.ipynb
 
