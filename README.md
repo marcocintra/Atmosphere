@@ -6,7 +6,7 @@
 - IGS_TEC_maps_2022_2024.ipynb
 - MAGGIA_TEC_maps_2022_2024.ipynb
 - NAGOYA_TEC_maps_2022_2024.ipynb
-- Generate_final_TEC_maps_and_datetimes.ipynb
+- Generate_datetimes_from_TEC_maps_dataframes.ipynb
 
 ## 2. IPython notebook for TEC maps processing (plotting, interpolation and metrics calculation)
 
