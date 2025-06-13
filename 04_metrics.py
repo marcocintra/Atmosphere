@@ -28,7 +28,7 @@ def calculate_pearson(y_true, y_pred, filename="unknown", debug=False):
     
     if valid_count < 2:
         if debug:
-            print("  Menos de 2 pontos válidos")
+            print("Menos de 2 pontos válidos")
         return np.nan
     
     y_true_valid = y_true[valid_mask]
