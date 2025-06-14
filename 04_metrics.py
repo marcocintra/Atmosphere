@@ -15,13 +15,11 @@ def calculate_pearson(y_true, y_pred, filename="unknown", debug=False):
     if debug:
         print(f"Calculando Pearson para {filename}")
     
-    # Verificar arrays vazios ou só com NaNs
     if len(y_true) == 0 or len(y_pred) == 0 or np.all(np.isnan(y_true)) or np.all(np.isnan(y_pred)):
         if debug:
             print("  Arrays vazios ou só com NaNs")
         return np.nan
     
-    # Filtrar valores não-NaN
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     valid_count = np.sum(valid_mask)
     
@@ -40,20 +38,16 @@ def calculate_pearson(y_true, y_pred, filename="unknown", debug=False):
     if var_true < 1e-10:
         if debug:
             print("  Variância zero em y_true")
-        # Se todos os valores são iguais, a correlação é indefinida
-        # Podemos retornar 0 (sem correlação) ou NaN
-        return 0.0  # Ou np.nan - escolha o que faz mais sentido
+        return 0.0
         
     if var_pred < 1e-10:
         if debug:
             print("  Variância zero em y_pred")
-        return 0.0  # Ou np.nan - escolha o que faz mais sentido
+        return 0.0
     
-    # Calcular correlação com tratamento robusto
     try:
         corr = np.corrcoef(y_true_valid, y_pred_valid)[0, 1]
         
-        # Verificar se o resultado é válido
         if np.isnan(corr) or np.isinf(corr):
             if debug:
                 print(f"  Correlação inválida: {corr}")
@@ -192,82 +186,62 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0):
 
 def calculate_ssim(y_true, y_pred):
     """Calcula o SSIM apenas nas regiões onde ambas as imagens têm valores não-NaN."""
-    # Converte para escala de cinza se for imagem colorida
     if len(y_true.shape) > 2 and y_true.shape[2] > 1:
         y_true = np.mean(y_true, axis=2)
     if len(y_pred.shape) > 2 and y_pred.shape[2] > 1:
         y_pred = np.mean(y_pred, axis=2)
     
-    # Cria uma máscara de valores válidos (não NaN)
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     
-    # Verifica se há pixels válidos suficientes
     min_pixels = 100  # Mínimo de pixels para um SSIM significativo
     if np.sum(valid_mask) < min_pixels:
         return np.nan
     
-    # Extrair apenas os pixels válidos para calcular estatísticas
     y_true_pixels = y_true[valid_mask]
     y_pred_pixels = y_pred[valid_mask]
     
-    # Verificar se há variância suficiente para um cálculo significativo
     min_variance = 1e-6
     true_var = np.var(y_true_pixels)
     pred_var = np.var(y_pred_pixels)
     
     if true_var < min_variance or pred_var < min_variance:
-        # Se ambos são praticamente constantes e iguais
         if np.allclose(y_true_pixels, y_pred_pixels, rtol=1e-5, atol=1e-8):
-            return 1.0  # Similaridade perfeita
-        # Se são constantes mas diferentes
+            return 1.0 
         mean_abs_diff = np.mean(np.abs(y_true_pixels - y_pred_pixels))
         max_possible_diff = max(np.max(y_true_pixels), np.max(y_pred_pixels)) - min(np.min(y_true_pixels), np.min(y_pred_pixels))
         if max_possible_diff > 0:
             return 1.0 - (mean_abs_diff / max_possible_diff)
         return 0.0
     
-    # Calcula o intervalo de dados apenas com valores válidos
     data_range = max(np.max(y_true_pixels) - np.min(y_true_pixels), 
                      np.max(y_pred_pixels) - np.min(y_pred_pixels))
     if data_range == 0:
         data_range = 1.0
     
-    # Para calcular o SSIM com a biblioteca, precisamos criar versões das imagens
-    # onde regiões não válidas são substituídas por um valor constante que não
-    # afeta o cálculo nas regiões válidas
     y_true_for_ssim = y_true.copy()
     y_pred_for_ssim = y_pred.copy()
     
-    # Usar o mesmo valor constante para ambas as imagens em regiões não válidas
-    # Isso faz com que o SSIM dessas regiões seja 1.0 (idêntico) e não afete o cálculo
     constant_value = np.mean(y_true_pixels)
     y_true_for_ssim[~valid_mask] = constant_value
     y_pred_for_ssim[~valid_mask] = constant_value
     
-    # Tenta calcular SSIM
     try:
-        # Se a maioria dos pixels (>50%) não for válida, retorna NaN
         if np.sum(valid_mask) < 0.5 * valid_mask.size:
             return np.nan
         
-        # Calcula o SSIM - as regiões não válidas não afetam o resultado
-        # pois têm valores idênticos em ambas as imagens
         ssim_value = ssim(y_true_for_ssim, y_pred_for_ssim, data_range=data_range)
         
-        # Verificar se o resultado é válido
         if np.isnan(ssim_value) or np.isinf(ssim_value):
             return np.nan
             
         return ssim_value
     except Exception as e:
-        # Se houver erro por diferença de dimensões
         if y_true.shape != y_pred.shape:
             min_height = min(y_true.shape[0], y_pred.shape[0])
             min_width = min(y_true.shape[1], y_pred.shape[1])
             y_true_resized = y_true_for_ssim[:min_height, :min_width]
             y_pred_resized = y_pred_for_ssim[:min_height, :min_width]
             
-            # Tenta novamente com as imagens redimensionadas
             try:
                 return ssim(y_true_resized, y_pred_resized, data_range=data_range)
             except Exception:
@@ -280,9 +254,8 @@ def fisher_z_transform(r):
     """Transforma correlação r para valor z, tratando correlações perfeitas."""
     if np.isnan(r):
         return np.nan
-    # Mantém correlações perfeitas em vez de transformá-las em NaN
     if abs(r) >= 1:
-        return 4.0 * np.sign(r)  # Um valor grande com o mesmo sinal de r
+        return 4.0 * np.sign(r)
     r = np.clip(r, -0.9999, 0.9999)
     return 0.5 * np.log((1 + r) / (1 - r))
 
@@ -308,9 +281,9 @@ def calculate_strict_stats(map_a, map_b):
         ]}
     
     min_a = float(np.min(valid_a))
-    q1_a = float(np.percentile(valid_a, 25))  # 25º percentil = Q1
+    q1_a = float(np.percentile(valid_a, 25))
     median_a = float(np.median(valid_a))
-    q3_a = float(np.percentile(valid_a, 75))  # 75º percentil = Q3
+    q3_a = float(np.percentile(valid_a, 75))
     max_a = float(np.max(valid_a))
     mean_a = float(np.mean(valid_a))
     
@@ -376,18 +349,15 @@ def calculate_pair_stats(df, metric_type):
     pair_stats = defaultdict(list)
     pair_counts = defaultdict(int)
     
-    # Agrupa por pares de fontes
     for _, row in df.iterrows():
         source_a, source_b = row['source_a'], row['source_b']
         pair_key = f"{source_a} x {source_b}"
         
-        # Só adiciona se houver um valor de métrica válido
         metric_val = row[metric_type]
         if not np.isnan(metric_val):
             pair_stats[pair_key].append(metric_val)
             pair_counts[pair_key] += 1
     
-    # Calcula métricas resumidas para cada par
     pair_metrics = {}
     for pair_key, values in pair_stats.items():
         if metric_type == 'pearson':
@@ -397,7 +367,6 @@ def calculate_pair_stats(df, metric_type):
                 'count': pair_counts[pair_key]
             }
         elif metric_type == 'r2':
-            # Para R², precisamos dos valores de r original (que é a raiz quadrada do R²)
             source_a, source_b = pair_key.split(' x ')
             r_values = df.loc[(df['source_a'] == source_a) & (df['source_b'] == source_b)]['pearson_r'].values
             valid_r = r_values[~np.isnan(r_values)]
@@ -407,7 +376,6 @@ def calculate_pair_stats(df, metric_type):
                 'count': pair_counts[pair_key]
             }
         else:
-            # Para outras métricas, calculamos a média direta
             pair_metrics[pair_key] = {
                 'metric_value': np.nanmean(values),
                 'count': pair_counts[pair_key]
@@ -415,7 +383,6 @@ def calculate_pair_stats(df, metric_type):
     
     return pair_metrics
 
-# Função para calcular média mensal usando Fisher Z para correlações de Pearson
 def calculate_monthly_pearson_avg(month_data):
     """Calcula a média de correlação de Pearson para dados mensais usando transformação Fisher Z."""
     pearson_values = month_data['pearson'].values
@@ -429,7 +396,6 @@ def calculate_monthly_pearson_avg(month_data):
     
     return fisher_z_inverse(np.mean(z_values))
 
-# Função para calcular média mensal de R² usando Fisher Z para correlações de Pearson
 def calculate_monthly_r2_avg(month_data):
     """Calcula a média de R² para dados mensais usando transformação Fisher Z nos valores de r."""
     r_values = month_data['pearson_r'].values
@@ -443,56 +409,44 @@ def calculate_monthly_r2_avg(month_data):
     
     return fisher_z_inverse(np.mean(z_values)) ** 2
 
-# FIXED FUNCTION: Calcular métricas mensais por fonte
 def calculate_monthly_metrics_by_source(df, metric_type):
     """Calcula estatísticas mensais agregadas por fonte."""
     if 'datetime' not in df.columns:
         return pd.DataFrame()
         
-    # Preparar dataframe para análise temporal
     temp_df = df.copy()
     if not pd.api.types.is_datetime64_any_dtype(temp_df['datetime']):
         temp_df['datetime'] = pd.to_datetime(temp_df['datetime'])
     
-    # Adicionar colunas de ano e mês
     temp_df['year_month'] = temp_df['datetime'].dt.strftime('%Y-%m')
     temp_df['month'] = temp_df['datetime'].dt.month
     temp_df['year'] = temp_df['datetime'].dt.year
     
-    # Dicionário para armazenar métricas mensais por fonte
-    # FIX: Use a simple defaultdict of lists instead of nested defaultdicts
     monthly_metrics_by_source = defaultdict(list)
     
-    # Processar cada linha do dataframe, coletando métricas para cada fonte
     for _, row in temp_df.iterrows():
         source_a, source_b = row['source_a'], row['source_b']
         year = row['year']
         month = row['month']
         
-        # Adicionar métrica para source_a
         if not np.isnan(row[metric_type]):
             key = (source_a, year, month)
             monthly_metrics_by_source[key].append(row[metric_type])
         
-        # Adicionar métrica para source_b
         if not np.isnan(row[metric_type]):
             key = (source_b, year, month)
             monthly_metrics_by_source[key].append(row[metric_type])
     
-    # Calcular médias por fonte e mês
     result = []
     for (source, year, month), values in monthly_metrics_by_source.items():
         if metric_type == 'pearson':
-            # Aplicar Fisher Z para média de correlações
             z_values = [fisher_z_transform(v) for v in values if not np.isnan(fisher_z_transform(v))]
             mean_value = fisher_z_inverse(np.mean(z_values)) if z_values else np.nan
         elif metric_type == 'r2':
-            # Para R², convertemos para r, aplicamos Fisher Z, e depois voltamos para R²
             r_values = np.sqrt([v for v in values if v >= 0 and not np.isnan(v)])
             z_values = [fisher_z_transform(r) for r in r_values if not np.isnan(fisher_z_transform(r))]
             mean_value = fisher_z_inverse(np.mean(z_values)) ** 2 if z_values else np.nan
         else:
-            # Para outras métricas, usamos a média regular
             mean_value = np.nanmean(values)
             
         result.append({
@@ -506,21 +460,17 @@ def calculate_monthly_metrics_by_source(df, metric_type):
     
     return pd.DataFrame(result) if result else pd.DataFrame()
 
-# Função para calcular estatísticas temporais (mensais) com Fisher Z
 def calculate_temporal_stats(df, metric_type):
     """Calcula estatísticas temporais com suporte a Fisher Z para correlações de Pearson."""
     if not 'datetime' in df.columns:
         return pd.DataFrame()
     
-    # Converter para datetime se não for
     if not pd.api.types.is_datetime64_any_dtype(df['datetime']):
         df = df.copy()
         df['datetime'] = pd.to_datetime(df['datetime'])
     
-    # Adicionar coluna ano-mês
     df['year_month'] = df['datetime'].dt.strftime('%Y-%m')
     
-    # Agrupar por par e ano-mês
     grouped = df.groupby(['source_a', 'source_b', 'year_month'])
     
     result = []
@@ -533,7 +483,6 @@ def calculate_temporal_stats(df, metric_type):
             'count': len(group)
         }
         
-        # Calcular estatística baseada no tipo de métrica
         if metric_type == 'pearson':
             row['mean'] = calculate_monthly_pearson_avg(group)
             row['std'] = np.nanstd(group[metric_type].values) if len(group) > 1 else np.nan
@@ -603,33 +552,33 @@ if __name__ == '__main__':
     
     base_datasets = {
         'embrace': [
-            'mapas1_embrace_2022_2024_0800',
-            'mapas1_embrace_2022_2024_1600',
-            'mapas1_embrace_2022_2024_2000_2200_0000_0200_0400'
+            'TF1_EMBRACE_TEC_maps_2022_2024_0800',
+            'TF1_EMBRACE_TEC_maps_2022_2024_1600',
+            'TF1_EMBRACE_TEC_maps_2022_2024_2000_2200_0000_0200_0400'
         ],
         'igs': [
-            'mapas1_igs_2022_2024_0800',
-            'mapas1_igs_2022_2024_1600',
-            'mapas1_igs_2022_2024_2000_2200_0000_0200_0400',
-            # 'mapas2_igs_2022_2024_0800',
-            # 'mapas2_igs_2022_2024_1600',
-            # 'mapas2_igs_2022_2024_2000_2200_0000_0200_0400'
+            'TF1_IGS_TEC_maps_2022_2024_0800',
+            'TF1_IGS_TEC_maps_2022_2024_1600',
+            'TF1_IGS_TEC_maps_2022_2024_2000_2200_0000_0200_0400',
+           #'TF2_IGS_TEC_maps_2022_2024_0800',
+           #'TF2_IGS_TEC_maps_2022_2024_1600',
+           #'TF2_IGS_TEC_maps_2022_2024_2000_2200_0000_0200_0400'
         ],
         'maggia': [
-            'mapas1_maggia_2022_2024_0800',
-            'mapas1_maggia_2022_2024_1600',
-            'mapas1_maggia_2022_2024_2000_2200_0000_0200_0400',
-            # 'mapas2_maggia_2022_2024_0800',
-            # 'mapas2_maggia_2022_2024_1600',
-            # 'mapas2_maggia_2022_2024_2000_2200_0000_0200_0400'
+            'TF1_MAGGIA_TEC_maps_2022_2024_0800',
+            'TF1_MAGGIA_TEC_maps_2022_2024_1600',
+            'TF1_MAGGIA_TEC_maps_2022_2024_2000_2200_0000_0200_0400',
+           #'TF2_MAGGIA_TEC_maps_2022_2024_0800',
+           #'TF2_MAGGIA_TEC_maps_2022_2024_1600',
+           #'TF2_MAGGIA_TEC_maps_2022_2024_2000_2200_0000_0200_0400'
         ],
         'nagoya': [
-            'mapas1_nagoya_2022_2024_0800',
-            'mapas1_nagoya_2022_2024_1600',
-            'mapas1_nagoya_2022_2024_2000_2200_0000_0200_0400',
-            # 'mapas2_nagoya_2022_2024_0800',
-            # 'mapas2_nagoya_2022_2024_1600',
-            # 'mapas2_nagoya_2022_2024_2000_2200_0000_0200_0400'
+            'TF1_Nagoya_TEC_maps_2022_2024_0800',
+            'TF1_Nagoya_TEC_maps_2022_2024_1600',
+            'TF1_Nagoya_TEC_maps_2022_2024_2000_2200_0000_0200_0400',
+           #'TF2_Nagoya_TEC_maps_2022_2024_0800',
+           #'TF2_Nagoya_TEC_maps_2022_2024_1600',
+           #'TF2_Nagoya_TEC_maps_2022_2024_2000_2200_0000_0200_0400'
         ]
     }
     
@@ -659,10 +608,8 @@ if __name__ == '__main__':
     if metric_type in ['residual', 'max_residual', 'min_residual'] and normalize_residuals:
         print("Normalizing y_pred for residual calculations")
     
-    # Determine file extension based on metric type
     file_extension = '*.png' if metric_type == 'ssim' else '*.npy'
     
-    # Build list of expected directories based on defined datasets
     all_expected_dirs = [base_dir / dataset for source in datasets for dataset in datasets[source]]
     existing_dirs = [d for d in all_expected_dirs if d.is_dir() and any(d.glob(file_extension))]
     
@@ -678,12 +625,10 @@ if __name__ == '__main__':
     skipped_files = 0
     result = []
     
-    # Dicionários para rastrear arquivos pulados
-    skipped_files_log = defaultdict(list)  # Para registrar arquivos pulados
-    missing_files_by_pair = defaultdict(list)  # Para registrar arquivos ausentes por par
-    error_files_by_pair = defaultdict(list)  # Para registrar erros por par
+    skipped_files_log = defaultdict(list)  
+    missing_files_by_pair = defaultdict(list)
+    error_files_by_pair = defaultdict(list)  
     
-    # Abrir arquivo de log se debug está ativado
     if debug_skipped:
         with open(debug_file, 'w') as f:
             f.write("# DEBUG LOG FOR MISSING FILES\n")
@@ -694,7 +639,6 @@ if __name__ == '__main__':
         if not datasets[source_a] or not datasets[source_b]:
             continue
         
-        # Filter datasets to only those with existing directories
         valid_pairs = []
         for i in range(min(len(datasets[source_a]), len(datasets[source_b]))):
             dataset_a = datasets[source_a][i]
@@ -719,11 +663,9 @@ if __name__ == '__main__':
             print(f"\nProcessing {dataset_a} x {dataset_b}")
             print(f"Found {len(files_a)} {file_extension} files in {dataset_a}")
             
-            # Contadores específicos para este par
             pair_processed = 0
             pair_skipped = 0
             
-            # Log detailed information if debug is enabled
             if debug_skipped:
                 with open(debug_file, 'a') as f:
                     f.write(f"\n=== Processing {dataset_a} x {dataset_b} ===\n")
@@ -807,13 +749,10 @@ if __name__ == '__main__':
                         epoch = np.datetime64('1970-01-01T00:00:00')
                     
                     if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] and not np.isnan(metric_value):
-                        # Métricas já normalizadas
                         value_p = metric_value * 100
                     elif metric_type == 'mse' and not np.isnan(metric_value) and stats['data_range'] != 0:
-                        # MSE precisa ser normalizado pelo quadrado do data_range
                         value_p = (metric_value / (stats['data_range'] ** 2) * 100)
                     elif metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber'] and not np.isnan(metric_value) and stats['data_range'] != 0:
-                        # Outras métricas baseadas em erro
                         value_p = (metric_value / stats['data_range'] * 100)
                     else:
                         value_p = np.nan
@@ -861,17 +800,14 @@ if __name__ == '__main__':
         df['datetime'] = pd.to_datetime(df['datetime'])
         df.sort_values('datetime', inplace=True)
 
-    # Calcular métricas mensais por fonte - NOVA CHAMADA
     monthly_by_source_metrics = None
     if 'datetime' in df.columns:
         monthly_by_source_metrics = calculate_monthly_metrics_by_source(df, metric_type)
-        # Exportar para CSV
         if not monthly_by_source_metrics.empty:
             monthly_by_source_file = f'monthly_metrics_{metric_type}_by_source.csv'
             monthly_by_source_metrics.to_csv(monthly_by_source_file, index=False)
             print(f"Monthly metrics by source exported to {monthly_by_source_file}")
 
-    # Adicionar análise detalhada de arquivos faltantes
     print("\n===== MISSING FILES ANALYSIS =====")
     total_missing = 0
     for pair, missing_files in missing_files_by_pair.items():
@@ -899,7 +835,6 @@ if __name__ == '__main__':
     print(f"\nTotal missing files across all pairs: {total_missing}")
     print(f"Total files with errors across all pairs: {total_errors}")
     
-    # Continuar com o processamento normal
     dataset_metrics = defaultdict(list)
     dataset_total_metrics = defaultdict(float)
     dataset_count = defaultdict(int)
@@ -966,7 +901,6 @@ if __name__ == '__main__':
             mean_median_both = selection['median_both'].mean()
             mean_data_range = mean_max_both - mean_min_both if not np.isnan(mean_max_both) and not np.isnan(mean_min_both) else np.nan
 
-            # Exibindo estatísticas gerais
             print("\nStatistics for All Data:")
             print("Dataset A:")
             print(f"  Min: {mean_min_a:.4f}, Q1: {selection['q1_a'].mean():.4f}, Median: {mean_median_a:.4f}, Q3: {selection['q3_a'].mean():.4f}, Mean: {mean_mean_a:.4f}, Max: {mean_max_a:.4f}")
@@ -976,24 +910,18 @@ if __name__ == '__main__':
             print(f"  Min: {mean_min_both:.4f}, Q1: {selection['q1_both'].mean():.4f}, Median: {mean_median_both:.4f}, Q3: {selection['q3_both'].mean():.4f}, Mean: {mean_mean_both:.4f}, Max: {mean_max_both:.4f}")
             print(f"  Data Range: {mean_data_range:.4f}")
             
-            # Calculando porcentagem padronizada para qualquer métrica
             if metric_type in ['pearson', 'r2', 'ssim', 'cosine']:
-                # Estas métricas já são normalizadas (entre -1 e 1 ou 0 e 1)
                 metric_percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
                 percent_suffix = "%"
             elif metric_type in ['rmse', 'mse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
-                # Métricas baseadas em erro, calcular como % da faixa de dados
                 metric_percent = (metric_value / mean_data_range * 100) if not np.isnan(metric_value) and mean_data_range != 0 else np.nan
                 percent_suffix = "% of data range"
             else:
-                # Para outras métricas que possam ser adicionadas no futuro
                 metric_percent = np.nan
                 percent_suffix = "%"
             
-            # Formatação padronizada para todos os tipos de métricas
             percent_display = f"({metric_percent:.2f}{percent_suffix})" if not np.isnan(metric_percent) else "(NaN%)"
             
-            # Exibindo a métrica média com porcentagem
             if metric_type == 'pearson':
                 print(f'Average Pearson Correlation: {metric_value:.4f} {percent_display} (Fisher Z applied)')
             elif metric_type == 'r2':
@@ -1017,48 +945,35 @@ if __name__ == '__main__':
             elif metric_type == 'huber':
                 print(f'Average Huber Loss (delta={huber_delta}): {metric_value:.4f} {percent_display}')
             
-            # Ordenando e selecionando os melhores mapas
             sorted_maps = selection.sort_values(by=f'{metric_type}_p', ascending=not higher_is_better).head(top_n)
             comp_key = f"{dataset_a} x {dataset_b}"
             top_maps_by_comparison[comp_key] = sorted_maps
             
-            # Cabeçalho da exibição dos melhores mapas - agora sempre indicando Percentage
             print(f"\nTop {top_n} Maps with Best {metric_type.upper()} Values (Sorted by Percentage):")
             print("-" * 120)
             
-            # Exibindo cada mapa com suas métricas
             for idx, row in enumerate(sorted_maps.itertuples(), 1):
-                # Determinando informações de arquivo
                 file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
                 
-                # Construindo exibição da métrica com porcentagem
                 if hasattr(row, f'{metric_type}_p') and not np.isnan(getattr(row, f'{metric_type}_p')):
-                    # Se a métrica já tem um atributo de porcentagem calculado
                     if metric_type in ['rmse', 'mse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
                         metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of data range)"
                     else:
                         metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}%)"
                 else:
-                    # Se precisamos calcular a porcentagem agora
-                    # Se precisamos calcular a porcentagem agora
                     if metric_type in ['pearson', 'r2', 'ssim', 'cosine']:
-                        # Métricas normalizadas
                         metric_value = getattr(row, metric_type)
                         metric_percent = metric_value * 100 if not np.isnan(metric_value) else np.nan
                         metric_display = f"{metric_value:.4f} ({metric_percent:.2f}%)" if not np.isnan(metric_percent) else f"{metric_value:.4f} (NaN%)"
                     elif metric_type in ['rmse', 'mse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
-                        # Métricas baseadas em erro
                         metric_value = getattr(row, metric_type)
                         metric_percent = (metric_value / row.data_range * 100) if not np.isnan(metric_value) and row.data_range != 0 else np.nan
                         metric_display = f"{metric_value:.4f} ({metric_percent:.2f}% of data range)" if not np.isnan(metric_percent) else f"{metric_value:.4f} (NaN% of data range)"
                     else:
-                        # Caso não seja possível calcular porcentagem
                         metric_display = f"{getattr(row, metric_type):.4f} (Porcentagem não disponível)"
                 
-                # Formatando data
                 date_str = pd.to_datetime(row.datetime).strftime('%Y-%m-%d %H:%M') if hasattr(row, 'datetime') else 'Unknown'
                 
-                # Exibindo informações do mapa
                 print(f"{idx}. Data: {date_str}")
                 print(f"   Comparação: {row.dataset_a} x {row.dataset_b}")
                 print(f"   Arquivos: {file_info}")
@@ -1071,13 +986,11 @@ if __name__ == '__main__':
                 print(f"     Min: {row.min_both:.4f}, Q1: {row.q1_both:.4f}, Median: {row.median_both:.4f}, Q3: {row.q3_both:.4f}, Mean: {row.mean_both:.4f}, Max: {row.max_both:.4f}")
                 print(f"     Data Range: {row.data_range:.4f}")
                 
-                # Inserir separador entre mapas, exceto para o último
                 if idx < len(sorted_maps):
                     print("-" * 80)
             
             print("-" * 120)
             
-            # Análise mensal para este par
             if 'datetime' in selection.columns:
                 for year in [2022, 2023, 2024]:
                     for month in range(1, 13):
@@ -1086,7 +999,6 @@ if __name__ == '__main__':
                         if not month_data.empty:
                             month_name = pd.Timestamp(year=year, month=month, day=1).strftime('%B/%Y')
                             
-                            # CORREÇÃO: Utilizar Fisher Z para médias de correlação de Pearson
                             if metric_type == 'pearson':
                                 pearson_values = month_data[metric_type].values
                                 valid_metrics = pearson_values[~np.isnan(pearson_values)]
@@ -1100,39 +1012,31 @@ if __name__ == '__main__':
                             else:
                                 month_metric = np.nanmean(np.abs(month_data[metric_type])) if metric_type == 'residual' else np.nanmean(month_data[metric_type])
                             
-                            # Exibindo métrica mensal com porcentagem
                             if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
-                                # Métricas já normalizadas
                                 month_percent = month_metric * 100 if not np.isnan(month_metric) else np.nan
                                 percent_suffix = "%"
                             elif metric_type == 'mse' and not np.isnan(month_metric) and mean_data_range != 0:
-                                # MSE precisa ser normalizado pelo quadrado do data_range
                                 month_percent = (month_metric / (mean_data_range ** 2) * 100)
                                 percent_suffix = "% of squared data range"
                             elif metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber']:
-                                # Outras métricas baseadas em erro
                                 month_percent = (month_metric / mean_data_range * 100) if not np.isnan(month_metric) and mean_data_range != 0 else np.nan
                                 percent_suffix = "% of data range"
 
                             percent_display = f"({month_percent:.2f}{percent_suffix})" if not np.isnan(month_percent) else "(NaN%)"
                             print(f'{month_name}: {metric_type.upper()} = {month_metric:.4f} {percent_display}')
     
-    # NOVA SEÇÃO: ANÁLISE POR PARES DE FONTES
     print("\n===== PAIRS COMPARISON =====")
     pair_metrics = calculate_pair_stats(df, metric_type)
     
-    # Calcular percentuais para cada par
     for pair_key, data in pair_metrics.items():
         metric_val = data['metric_value']
         if np.isnan(metric_val):
             data['percent'] = np.nan
             continue
             
-        # Calcular o percentual baseado no tipo de métrica
         if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
             data['percent'] = metric_val * 100
         else:
-            # Para métricas baseadas em erro, precisamos do data_range médio para este par
             source_a, source_b = pair_key.split(' x ')
             pair_data_ranges = df[(df['source_a'] == source_a) & (df['source_b'] == source_b)]['data_range'].values
             avg_data_range = np.nanmean(pair_data_ranges) if len(pair_data_ranges) > 0 else 1.0
@@ -1144,14 +1048,12 @@ if __name__ == '__main__':
             else:
                 data['percent'] = np.nan
     
-    # Ordenar os pares por sua métrica (maior para menor ou menor para maior dependendo do tipo)
     sorted_pairs = list(pair_metrics.items())
     if higher_is_better:
         sorted_pairs.sort(key=lambda x: float('-inf') if np.isnan(x[1]['percent']) else x[1]['percent'], reverse=True)
     else:
         sorted_pairs.sort(key=lambda x: float('inf') if np.isnan(x[1]['percent']) else x[1]['percent'], reverse=False)
     
-    # Exibir o ranking de pares
     print("\nPairs Ranking (from best to worst):")
     for i, (pair_key, data) in enumerate(sorted_pairs, 1):
         metric_val = data['metric_value']
@@ -1172,13 +1074,11 @@ if __name__ == '__main__':
         percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
         print(f"{i}. {pair_key}: {metric_val:.4f} {percent_display} - {count} comparisons")
     
-    # Função para formatar a exibição de métrica com porcentagem
     def format_dataset_metric(dataset_name, metric_val):
         if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
             percent = metric_val * 100 if not np.isnan(metric_val) else np.nan
             percent_suffix = "%"
         elif metric_type == 'mse':
-            # MSE precisa ser normalizado pelo quadrado do data_range
             data_ranges = df[(df['source_a'] == dataset_name) | (df['source_b'] == dataset_name)]['data_range'].values
             avg_data_range = np.nanmean(data_ranges) if len(data_ranges) > 0 else 1.0
             percent = (metric_val / (avg_data_range ** 2) * 100) if not np.isnan(metric_val) and avg_data_range != 0 else np.nan
@@ -1211,7 +1111,6 @@ if __name__ == '__main__':
         else:
             dataset_avg_metrics[dataset] = np.nan
     
-    # Calculate percentages for each dataset for proper sorting
     dataset_percentages = {}
     for dataset, avg_val in dataset_avg_metrics.items():
         if np.isnan(avg_val):
@@ -1230,7 +1129,6 @@ if __name__ == '__main__':
             else:
                 dataset_percentages[dataset] = np.nan
     
-    # Find best and worst by percentage, not raw value
     if higher_is_better:
         best_dataset_name = max(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('-inf'))[0]
         worst_dataset_name = min(dataset_percentages.items(), key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'))[0]
@@ -1260,14 +1158,12 @@ if __name__ == '__main__':
     print(f"Worst dataset: {format_dataset_metric(worst_dataset[0], worst_dataset[1])}")
     
     print("\nDataset Ranking (from best to worst):")
-    # Sort by percentage value, maintaining the (dataset, raw_value) structure but ordering by percentage
     sorted_datasets_with_percent = [(d, v, dataset_percentages[d]) for d, v in dataset_avg_metrics.items()]
     if higher_is_better:
         sorted_datasets_with_percent.sort(key=lambda x: float('-inf') if np.isnan(x[2]) else x[2], reverse=True)
     else:
         sorted_datasets_with_percent.sort(key=lambda x: float('inf') if np.isnan(x[2]) else x[2], reverse=False)
     
-    # Display the ranking with both raw value and percentage
     for i, (dataset, avg_val, pct) in enumerate(sorted_datasets_with_percent, 1):
         if np.isnan(avg_val):
             print(f"{i}. {dataset}: NaN (unable to calculate metric)")
@@ -1292,7 +1188,6 @@ if __name__ == '__main__':
     for idx, row in enumerate(top_overall.itertuples(), 1):
         file_info = f"{row.filename_a} & {row.filename_b}" if metric_type == 'ssim' else row.filename_a
         
-        # Exibição consistente de porcentagem para todas as métricas
         if hasattr(row, f'{metric_type}_p') and not np.isnan(getattr(row, f'{metric_type}_p')):
             if metric_type == 'mse':
                 metric_display = f"{getattr(row, metric_type):.4f} ({getattr(row, f'{metric_type}_p'):.2f}% of squared data range)"
@@ -1331,9 +1226,7 @@ if __name__ == '__main__':
             print("-" * 80)
     print("-" * 120)
 
-    # NOVA SEÇÃO: ANÁLISE POR FONTE
     print("\n===== SOURCE ANALYSIS =====")
-    # Para cada fonte, mostre a qualidade média de suas comparações
     for source in dataset_metrics:
         source_pairs = [pair for pair in pair_metrics.keys() if source in pair]
         if not source_pairs:
@@ -1342,14 +1235,12 @@ if __name__ == '__main__':
         print(f"\nSource: {source}")
         print(f"Average {metric_type}: {dataset_avg_metrics[source]:.4f} ({dataset_percentages[source]:.2f}%)")
         
-        # NOVA SEÇÃO: Exibir métricas mensais agregadas por fonte
         if monthly_by_source_metrics is not None and not monthly_by_source_metrics.empty:
             source_monthly = monthly_by_source_metrics[monthly_by_source_metrics['source'] == source]
             
             if not source_monthly.empty:
                 print("\n  Monthly Aggregated Values:")
                 
-                # Ordenar por ano e mês
                 source_monthly = source_monthly.sort_values(by=['year', 'month'])
                 
                 for _, month_row in source_monthly.iterrows():
@@ -1359,12 +1250,10 @@ if __name__ == '__main__':
                     metric_val = month_row[f'{metric_type}_mean']
                     count = month_row['count']
                     
-                    # Formatar o valor com porcentagem
                     if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
                         percent = metric_val * 100 if not np.isnan(metric_val) else np.nan
                         percent_suffix = "%"
                     elif metric_type == 'mse':
-                        # MSE precisa ser normalizado pelo quadrado do data_range
                         data_ranges = df[
                             ((df['source_a'] == source) | (df['source_b'] == source)) &
                             (df['datetime'].dt.year == year) &
@@ -1374,7 +1263,6 @@ if __name__ == '__main__':
                         percent = (metric_val / (avg_data_range ** 2) * 100) if not np.isnan(metric_val) and avg_data_range != 0 else np.nan
                         percent_suffix = "% of squared data range"
                     else:
-                        # Métricas baseadas em erro
                         data_ranges = df[
                             ((df['source_a'] == source) | (df['source_b'] == source)) &
                             (df['datetime'].dt.year == year) &
@@ -1391,7 +1279,6 @@ if __name__ == '__main__':
         
         print("\n  Comparisons:")
         
-        # Listar todos os pares envolvendo esta fonte
         for pair in source_pairs:
             metric_val = pair_metrics[pair]['metric_value']
             percent = pair_metrics[pair]['percent']
@@ -1411,37 +1298,29 @@ if __name__ == '__main__':
             percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
             print(f"  {pair}: {metric_val:.4f} {percent_display} - {count} comparisons")
             
-            # Add monthly breakdown for this pair
             if 'datetime' in df.columns:
                 source_a, source_b = pair.split(' x ')
                 pair_data = df[(df['source_a'] == source_a) & (df['source_b'] == source_b)]
                 
                 if not pair_data.empty:
-                    # Ensure datetime format
                     if not pd.api.types.is_datetime64_any_dtype(pair_data['datetime']):
                         pair_data['datetime'] = pd.to_datetime(pair_data['datetime'])
                     
-                    # Sort by date to maintain chronological order
                     pair_data = pair_data.sort_values('datetime')
                     
-                    # Group by year and month
                     pair_data['year'] = pair_data['datetime'].dt.year
                     pair_data['month'] = pair_data['datetime'].dt.month
                     
                     print("    Monthly breakdown:")
                     
-                    # Process all years and months in the data
                     for year in sorted(pair_data['year'].unique()):
                         for month in sorted(pair_data[pair_data['year'] == year]['month'].unique()):
                             month_data = pair_data[(pair_data['year'] == year) & (pair_data['month'] == month)]
                             month_count = len(month_data)
                             
                             if month_count > 0:
-                                # Format month name
                                 month_name = f"{month}/{year}"
                                 
-                                # CORREÇÃO: Aplicar Fisher Z nas médias mensais
-                                # Calculate metric based on type
                                 if metric_type == 'pearson':
                                     valid_metrics = month_data[metric_type].values
                                     valid_metrics = valid_metrics[~np.isnan(valid_metrics)]
@@ -1455,11 +1334,9 @@ if __name__ == '__main__':
                                 else:
                                     month_metric = np.nanmean(month_data[metric_type].values)
                                 
-                                # Format the metric display
                                 if np.isnan(month_metric):
                                     print(f"          {month_name}: [NaN] - {month_count} comparisons")
                                 else:
-                                    # Calculate percentage based on metric type
                                     if metric_type in ['pearson', 'r2', 'cosine', 'ssim']:
                                         month_percent = month_metric * 100
                                     elif metric_type == 'mse':
@@ -1472,7 +1349,6 @@ if __name__ == '__main__':
                                     month_percent_display = f"({month_percent:.2f}{percent_suffix})" if not np.isnan(month_percent) else "(NaN%)"
                                     print(f"          {month_name}: {month_metric:.4f} {month_percent_display} - {month_count} comparisons")
     
-    # Exportar métricas de pares para um arquivo CSV
     pair_data = []
     for pair_key, data in pair_metrics.items():
         source_a, source_b = pair_key.split(' x ')
@@ -1491,11 +1367,9 @@ if __name__ == '__main__':
         pair_df.to_csv(output_file, index=False)
         print(f"\nPair metrics exported to {output_file}")
         
-    # CORREÇÃO: Utilizar nova função para análise temporal por par com Fisher Z
     if 'datetime' in df.columns:
         print("\n===== TEMPORAL ANALYSIS BY PAIR =====")
         
-        # Usar a nova função corrigida que aplica Fisher Z quando necessário
         temporal_df = calculate_temporal_stats(df, metric_type)
         
         if not temporal_df.empty:
