@@ -16,6 +16,7 @@
 
 - Case_study_EMBRACE_TEC_maps_2024.ipynb
 - Case_study_MAGGIA_TEC_maps_2024.ipynb
+- Search_for_case_study_IGS_TEC_maps_2024.ipynb
 - Search_for_case_study_NAGOYA_TEC_maps_2024.ipynb
 - F10_7_analysis.ipynb
 
