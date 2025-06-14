@@ -12,7 +12,6 @@ import traceback
 warnings.filterwarnings('ignore')
 
 def calculate_pearson(y_true, y_pred, filename="unknown", debug=False):
-    """Calcula a correlação de Pearson, tratando todos os casos especiais."""
     if debug:
         print(f"Calculando Pearson para {filename}")
     
