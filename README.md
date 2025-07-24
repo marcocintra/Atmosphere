@@ -36,4 +36,4 @@
 - Gopi_TEC_Salvador_analysis_Dec_2024.ipynb
 - Gopi_TEC_Sao_Luis_analysis_09_27_2024.ipynb
 - Gopi_TEC_Sao_Luis_analysis_Dec_2024.ipynb
-- MAE_RMSE_Gopi_and_local_TEC_map_values_results.ipynb
+- Metrics_Gopi_and_local_TEC_map_values_results.ipynb
