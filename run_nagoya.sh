@@ -7,12 +7,12 @@ DATASETS=(
 'TF1_Nagoya_TEC_maps_0800'
 'TF1_Nagoya_TEC_maps_1600'
 'TF1_Nagoya_TEC_maps_2000_2200_0000_0200_0400'
-'TF2_Nagoya_TEC_maps_0800'
-'TF2_Nagoya_TEC_maps_2024_1600'
-'TF2_Nagoya_TEC_maps_2000_2200_0000_0200_0400'
+#'TF2_Nagoya_TEC_maps_0800'
+#'TF2_Nagoya_TEC_maps_1600'
+#'TF2_Nagoya_TEC_maps_2000_2200_0000_0200_0400'
 'TF3_Nagoya_TEC_maps_0800_30m'
 'TF3_Nagoya_TEC_maps_1600_30m'
-'TF3_Nagoya_TEC_maps_2000_2200_0000_0200_0400_30m'
+'TF3_Nagoya_TEC_maps_2000_0400_30m'
 )
 
 for dataset in "${DATASETS[@]}"
