@@ -192,7 +192,7 @@ def calculate_ssim(y_true, y_pred):
     
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     
-    min_pixels = 100  # Mínimo de pixels para um SSIM significativo
+    min_pixels = 100 
     if np.sum(valid_mask) < min_pixels:
         return np.nan
     
@@ -237,7 +237,7 @@ def calculate_ssim(y_true, y_pred):
     min_pixels = 100
     if np.sum(valid_mask) < min_pixels:
         return np.nan
-        
+    try:    
         ssim_value = ssim(y_true_for_ssim, y_pred_for_ssim, data_range=data_range)
         
         if np.isnan(ssim_value) or np.isinf(ssim_value):
