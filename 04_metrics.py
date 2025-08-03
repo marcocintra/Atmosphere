@@ -184,7 +184,7 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0):
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
 def calculate_ssim(y_true, y_pred):
-    
+    """Calcula o SSIM apenas nas regiões onde ambas as imagens têm valores não-NaN."""
     if len(y_true.shape) > 2 and y_true.shape[2] > 1:
         y_true = np.mean(y_true, axis=2)
     if len(y_pred.shape) > 2 and y_pred.shape[2] > 1:
@@ -192,7 +192,7 @@ def calculate_ssim(y_true, y_pred):
     
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     
-    min_pixels = 100  
+    min_pixels = 100  # Mínimo de pixels para um SSIM significativo
     if np.sum(valid_mask) < min_pixels:
         return np.nan
     
@@ -206,11 +206,21 @@ def calculate_ssim(y_true, y_pred):
     if true_var < min_variance or pred_var < min_variance:
         if np.allclose(y_true_pixels, y_pred_pixels, rtol=1e-5, atol=1e-8):
             return 1.0 
+        
         mean_abs_diff = np.mean(np.abs(y_true_pixels - y_pred_pixels))
         max_possible_diff = max(np.max(y_true_pixels), np.max(y_pred_pixels)) - min(np.min(y_true_pixels), np.min(y_pred_pixels))
+        
         if max_possible_diff > 0:
-            return 1.0 - (mean_abs_diff / max_possible_diff)
-        return 0.0
+           
+            normalized_diff = mean_abs_diff / max_possible_diff
+            similarity = 1.0 - normalized_diff
+            
+            if similarity < 0.5:
+           
+                similarity = 2 * similarity - 1
+            
+            return similarity
+        return -1.0 
     
     data_range = max(np.max(y_true_pixels) - np.min(y_true_pixels), 
                      np.max(y_pred_pixels) - np.min(y_pred_pixels))

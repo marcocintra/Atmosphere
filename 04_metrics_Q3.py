@@ -348,8 +348,10 @@ def calculate_ssim(y_true, y_pred, verbose=False):
             print("Zero data range detected, using default value of 1.0")
     
     try:
-        if valid_percentage < 50 and verbose:
-            print(f"SSIM warning: Less than 50% valid values ({valid_percentage:.2f}%)")
+        if valid_percentage < 50:
+            if verbose:
+                print(f"SSIM warning: Less than 50% valid values ({valid_percentage:.2f}%)")
+            return np.nan
         
         ssim_value = ssim(y_true_for_ssim, y_pred_for_ssim, data_range=data_range)
         
@@ -409,13 +411,46 @@ def calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_q3, verbose=False):
             print(f"Too few valid values in Q3 mask: {valid_value_count} < {min_values}")
         return np.nan
     
-    y_true_q3_values = y_true_2d[valid_q3_mask]
-    if len(y_true_q3_values) == 0:
-        if verbose:
-            print("No valid values in Q3 mask for SSIM calculation")
-        return np.nan
+y_true_q3_values = y_true_2d[valid_q3_mask]
+y_pred_q3_values = y_pred_2d[valid_q3_mask]
+
+if len(y_true_q3_values) == 0:
+    if verbose:
+        print("No valid values in Q3 mask for SSIM calculation")
+    return np.nan
+
+min_variance = 1e-6
+true_var = np.var(y_true_q3_values)
+pred_var = np.var(y_pred_q3_values)
+
+if true_var < min_variance or pred_var < min_variance:
+    if verbose:
+        print(f"Low variance detected in Q3 values: true_var={true_var:.6f}, pred_var={pred_var:.6f}")
     
-    constant_value = np.mean(y_true_q3_values)
+    if np.allclose(y_true_q3_values, y_pred_q3_values, rtol=1e-5, atol=1e-8):
+        if verbose:
+            print("Q3 values are constant and identical, returning 1.0")
+        return 1.0
+    
+    mean_abs_diff = np.mean(np.abs(y_true_q3_values - y_pred_q3_values))
+    max_possible_diff = max(np.max(y_true_q3_values), np.max(y_pred_q3_values)) - min(np.min(y_true_q3_values), np.min(y_pred_q3_values))
+    
+    if max_possible_diff > 0:
+        similarity = 1.0 - (mean_abs_diff / max_possible_diff)
+        if verbose:
+            print(f"Computed similarity for constant images: {similarity:.4f}")
+        # Converter de [0,1] para [-1,1] para consistência com SSIM normal
+        if similarity < 0.5:
+            similarity = 2 * similarity - 1
+            if verbose:
+                print(f"Adjusted similarity to SSIM scale [-1,1]: {similarity:.4f}")
+        return similarity
+        
+    if verbose:
+        print("Unable to compute meaningful similarity, returning -1.0")
+    return -1.0
+
+constant_value = np.mean(y_true_q3_values)
     
     y_true_q3[~valid_q3_mask] = constant_value
     y_pred_q3[~valid_q3_mask] = constant_value
@@ -435,6 +470,25 @@ def calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_q3, verbose=False):
             print(f"Q3-masked SSIM calculation: {ssim_value:.4f}")
         return ssim_value
     except Exception as e:
+        if y_true_2d.shape != y_pred_2d.shape:
+            if verbose:
+                print(f"Attempting Q3-masked SSIM with resized arrays due to shape mismatch")
+            
+            min_height = min(y_true_2d.shape[0], y_pred_2d.shape[0])
+            min_width = min(y_true_2d.shape[1], y_pred_2d.shape[1])
+            y_true_resized = y_true_q3[:min_height, :min_width]
+            y_pred_resized = y_pred_q3[:min_height, :min_width]
+            
+            try:
+                result = ssim(y_true_resized, y_pred_resized, data_range=data_range)
+                if verbose:
+                    print(f"Q3-masked SSIM with resized arrays successful: {result:.4f}")
+                return result
+            except Exception as e2:
+                if verbose:
+                    print(f"Q3-masked SSIM with resized arrays failed: {str(e2)}")
+                return np.nan
+        
         if verbose:
             print(f"Error calculating Q3-masked SSIM: {e}")
         return np.nan
