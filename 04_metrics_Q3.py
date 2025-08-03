@@ -362,7 +362,7 @@ def calculate_ssim(y_true, y_pred, verbose=False):
             print(f"SSIM calculation successful: {ssim_value:.4f}")
         return ssim_value
     except Exception as e:
-        # Se houver erro por diferença de dimensões
+        
         if y_true.shape != y_pred.shape:
             if verbose:
                 print(f"Attempting SSIM with resized arrays")
@@ -1338,18 +1338,18 @@ if __name__ == '__main__':
             dataset_count[source_a] += len(valid_metrics)
             dataset_count[source_b] += len(valid_metrics)
             
-            mean_min_a = selection['min_a'].mean()
-            mean_max_a = selection['max_a'].mean()
+            mean_min_a = selection['min_a'].min()
+            mean_max_a = selection['max_a'].max() 
             mean_mean_a = selection['mean_a'].mean()
             mean_median_a = selection['median_a'].mean()
             
-            mean_min_b = selection['min_b'].mean()
-            mean_max_b = selection['max_b'].mean()
+            mean_min_b = selection['min_b'].min()
+            mean_max_b = selection['max_b'].max() 
             mean_mean_b = selection['mean_b'].mean()
             mean_median_b = selection['median_b'].mean()
             
-            mean_min_both = selection['min_both'].mean()
-            mean_max_both = selection['max_both'].mean()
+            mean_min_both = selection['min_both'].min()
+            mean_max_both = selection['max_both'].max()
             mean_mean_both = selection['mean_both'].mean()
             mean_median_both = selection['median_both'].mean()
             mean_data_range = mean_max_both - mean_min_both if not np.isnan(mean_max_both) and not np.isnan(mean_min_both) else np.nan

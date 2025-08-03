@@ -31,7 +31,6 @@ def calculate_pearson(y_true, y_pred, filename="unknown", debug=False):
     y_true_valid = y_true[valid_mask]
     y_pred_valid = y_pred[valid_mask]
     
-    # Verificar variância zero
     var_true = np.var(y_true_valid)
     var_pred = np.var(y_pred_valid)
     
@@ -136,7 +135,7 @@ def calculate_max_residual_error(y_true, y_pred, normalize=False, filename="unkn
     return np.max(np.abs(y_true_valid - y_pred_valid))
 
 def calculate_min_residual_error(y_true, y_pred, percentile=5.0, normalize=False, filename="unknown"):
-    """Calcula o erro residual no percentil especificado com validação robusta."""
+    
     if len(y_true) == 0 or len(y_pred) == 0 or np.all(np.isnan(y_true)) or np.all(np.isnan(y_pred)):
         return np.nan
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
@@ -160,7 +159,7 @@ def calculate_min_residual_error(y_true, y_pred, percentile=5.0, normalize=False
     return np.percentile(np.abs(y_true_valid - y_pred_valid), percentile)
 
 def calculate_cosine_similarity(y_true, y_pred):
-    """Calcula a similaridade de cosseno, tratando casos especiais."""
+    
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     if np.sum(valid_mask) < 2:
         return np.nan
@@ -174,7 +173,7 @@ def calculate_cosine_similarity(y_true, y_pred):
     return dot_product / (norm_y_true * norm_y_pred)
 
 def calculate_huber_loss(y_true, y_pred, delta=1.0):
-    """Calcula a perda de Huber, tratando casos especiais."""
+    
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     if np.sum(valid_mask) < 2:
         return np.nan
@@ -185,7 +184,7 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0):
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
 def calculate_ssim(y_true, y_pred):
-    """Calcula o SSIM apenas nas regiões onde ambas as imagens têm valores não-NaN."""
+    
     if len(y_true.shape) > 2 and y_true.shape[2] > 1:
         y_true = np.mean(y_true, axis=2)
     if len(y_pred.shape) > 2 and y_pred.shape[2] > 1:
@@ -193,7 +192,7 @@ def calculate_ssim(y_true, y_pred):
     
     valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     
-    min_pixels = 100  # Mínimo de pixels para um SSIM significativo
+    min_pixels = 100  
     if np.sum(valid_mask) < min_pixels:
         return np.nan
     
@@ -251,7 +250,7 @@ def calculate_ssim(y_true, y_pred):
         return np.nan
 
 def fisher_z_transform(r):
-    """Transforma correlação r para valor z, tratando correlações perfeitas."""
+    
     if np.isnan(r):
         return np.nan
     if abs(r) >= 1:
@@ -260,13 +259,13 @@ def fisher_z_transform(r):
     return 0.5 * np.log((1 + r) / (1 - r))
 
 def fisher_z_inverse(z):
-    """Transforma z de volta para correlação r."""
+    
     if np.isnan(z):
         return np.nan
     return (np.exp(2 * z) - 1) / (np.exp(2 * z) + 1)
 
 def calculate_strict_stats(map_a, map_b):
-    """Calcula estatísticas consistentes para os mapas, incluindo Q1 e Q3."""
+    
     map_a_flat = map_a.flatten() if len(map_a.shape) > 1 else map_a
     map_b_flat = map_b.flatten() if len(map_b.shape) > 1 else map_b
     
@@ -331,7 +330,7 @@ def load_image(filepath):
         return None
 
 def verify_combined_stats(selection):
-    """Verifica consistência das estatísticas combinadas."""
+    
     inconsistencies = 0
     for idx, row in selection.iterrows():
         max_a = row['max_a']
@@ -345,7 +344,7 @@ def verify_combined_stats(selection):
     return inconsistencies == 0
 
 def calculate_pair_stats(df, metric_type):
-    """Calcula estatísticas para cada par de fontes (source_a, source_b)"""
+    
     pair_stats = defaultdict(list)
     pair_counts = defaultdict(int)
     
@@ -384,7 +383,7 @@ def calculate_pair_stats(df, metric_type):
     return pair_metrics
 
 def calculate_monthly_pearson_avg(month_data):
-    """Calcula a média de correlação de Pearson para dados mensais usando transformação Fisher Z."""
+    
     pearson_values = month_data['pearson'].values
     valid_metrics = pearson_values[~np.isnan(pearson_values)]
     if len(valid_metrics) == 0:
@@ -397,7 +396,7 @@ def calculate_monthly_pearson_avg(month_data):
     return fisher_z_inverse(np.mean(z_values))
 
 def calculate_monthly_r2_avg(month_data):
-    """Calcula a média de R² para dados mensais usando transformação Fisher Z nos valores de r."""
+    
     r_values = month_data['pearson_r'].values
     valid_r = r_values[~np.isnan(r_values)]
     if len(valid_r) == 0:
@@ -410,7 +409,7 @@ def calculate_monthly_r2_avg(month_data):
     return fisher_z_inverse(np.mean(z_values)) ** 2
 
 def calculate_monthly_metrics_by_source(df, metric_type):
-    """Calcula estatísticas mensais agregadas por fonte."""
+    
     if 'datetime' not in df.columns:
         return pd.DataFrame()
         
@@ -461,7 +460,7 @@ def calculate_monthly_metrics_by_source(df, metric_type):
     return pd.DataFrame(result) if result else pd.DataFrame()
 
 def calculate_temporal_stats(df, metric_type):
-    """Calcula estatísticas temporais com suporte a Fisher Z para correlações de Pearson."""
+    
     if not 'datetime' in df.columns:
         return pd.DataFrame()
     
@@ -885,18 +884,18 @@ if __name__ == '__main__':
             dataset_count[source_a] += len(valid_metrics)
             dataset_count[source_b] += len(valid_metrics)
             
-            mean_min_a = selection['min_a'].mean()
-            mean_max_a = selection['max_a'].mean()
+            mean_min_a = selection['min_a'].min()
+            mean_max_a = selection['max_a'].max() 
             mean_mean_a = selection['mean_a'].mean()
             mean_median_a = selection['median_a'].mean()
-            
-            mean_min_b = selection['min_b'].mean()
-            mean_max_b = selection['max_b'].mean()
+
+            mean_min_b = selection['min_b'].min()
+            mean_max_b = selection['max_b'].max() 
             mean_mean_b = selection['mean_b'].mean()
             mean_median_b = selection['median_b'].mean()
-            
-            mean_min_both = selection['min_both'].mean()
-            mean_max_both = selection['max_both'].mean()
+
+            mean_min_both = selection['min_both'].min()
+            mean_max_both = selection['max_both'].max()
             mean_mean_both = selection['mean_both'].mean()
             mean_median_both = selection['median_both'].mean()
             mean_data_range = mean_max_both - mean_min_both if not np.isnan(mean_max_both) and not np.isnan(mean_min_both) else np.nan
