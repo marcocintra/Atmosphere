@@ -351,12 +351,13 @@ def calculate_ssim(y_true, y_pred, verbose=False):
         if verbose:
             print("Zero data range detected, using default value of 1.0")
     
-    min_pixels = 10  # Número mínimo absoluto para evitar erro no cálculo
+    min_pixels = 100
     if valid_value_count < min_pixels:
         if verbose:
             print(f"SSIM warning: Too few valid values ({valid_value_count} < {min_pixels})")
         return np.nan
-        
+
+    try:
         ssim_value = ssim(y_true_for_ssim, y_pred_for_ssim, data_range=data_range)
         
         if np.isnan(ssim_value) or np.isinf(ssim_value):
@@ -367,6 +368,7 @@ def calculate_ssim(y_true, y_pred, verbose=False):
         if verbose:
             print(f"SSIM calculation successful: {ssim_value:.4f}")
         return ssim_value
+    
     except Exception as e:
         
         if y_true.shape != y_pred.shape:
@@ -410,9 +412,10 @@ def calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_q3, verbose=False):
         print(f"Valid values in Q3 mask: {valid_value_count}/{valid_q3_mask.size} ({valid_percent:.2f}%)")
     
     valid_percentage = valid_value_count / valid_q3_mask.size * 100
-    if valid_value_count < 0.5 * valid_q3_mask.size:
+    min_values = 100 
+    if valid_value_count < min_values:
         if verbose:
-            print(f"SSIM warning: Less than 50% valid values in Q3 mask ({valid_percentage:.2f}%)")
+            print(f"SSIM warning: Too few valid values in Q3 mask ({valid_value_count} < {min_values}, {valid_percentage:.2f}%)")
         return np.nan
     
     y_true_q3_values = y_true_2d[valid_q3_mask]
@@ -423,9 +426,9 @@ def calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_q3, verbose=False):
             print("No valid values in Q3 mask for SSIM calculation")
         return np.nan
 
-        min_variance = 1e-6
-        true_var = np.var(y_true_q3_values)
-        pred_var = np.var(y_pred_q3_values)
+    min_variance = 1e-6
+    true_var = np.var(y_true_q3_values)
+    pred_var = np.var(y_pred_q3_values)
 
     if true_var < min_variance or pred_var < min_variance:
         if verbose:
@@ -1067,21 +1070,23 @@ if __name__ == '__main__':
 
                     mask_a_q3, q3_a = calculate_q3_mask(map_a, verbose=file_verbose)
                     mask_b_q3, q3_b = calculate_q3_mask(map_b, verbose=file_verbose)
-                    
+
                     valid_q3_a = False
                     valid_q3_b = False
+
+                    min_values = 100 
 
                     if mask_a_q3 is not None:
                         valid_pixels_a = mask_a_q3.sum()
                         total_pixels_a = mask_a_q3.size
                         valid_percent_a = (valid_pixels_a / total_pixels_a) * 100
-                        valid_q3_a = valid_pixels_a >= 0.5 * total_pixels_a
+                        valid_q3_a = valid_pixels_a >= min_values  
                         
                     if mask_b_q3 is not None:
                         valid_pixels_b = mask_b_q3.sum()
                         total_pixels_b = mask_b_q3.size
                         valid_percent_b = (valid_pixels_b / total_pixels_b) * 100
-                        valid_q3_b = valid_pixels_b >= 0.5 * total_pixels_b
+                        valid_q3_b = valid_pixels_b >= min_values  
 
                     if file_verbose:
                         print(f"Q3 mask validation:")
@@ -1093,7 +1098,7 @@ if __name__ == '__main__':
                         if mask_b_q3 is not None:
                             print(f"  Map B: Q3 value={q3_b:.4f}, Valid pixels: {valid_pixels_b}/{total_pixels_b} ({valid_percent_b:.2f}%), Valid mask: {'YES' if valid_q3_b else 'NO'}")
                         else:
-                            print(f"  Map B: Q3 value={q3_b:.4f}, No valid mask")    
+                            print(f"  Map B: Q3 value={q3_b:.4f}, No valid mask")
                     
                     if swap_ytrue_ypred and metric_type in ['r2', 'residual', 'max_residual', 'min_residual']:
                         y_true = map_b_flat
