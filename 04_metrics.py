@@ -234,9 +234,9 @@ def calculate_ssim(y_true, y_pred):
     y_true_for_ssim[~valid_mask] = constant_value
     y_pred_for_ssim[~valid_mask] = constant_value
     
-    try:
-        if np.sum(valid_mask) < 0.5 * valid_mask.size:
-            return np.nan
+    min_pixels = 100
+    if np.sum(valid_mask) < min_pixels:
+        return np.nan
         
         ssim_value = ssim(y_true_for_ssim, y_pred_for_ssim, data_range=data_range)
         

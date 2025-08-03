@@ -351,11 +351,11 @@ def calculate_ssim(y_true, y_pred, verbose=False):
         if verbose:
             print("Zero data range detected, using default value of 1.0")
     
-    try:
-        if valid_percentage < 50:
-            if verbose:
-                print(f"SSIM warning: Less than 50% valid values ({valid_percentage:.2f}%)")
-            return np.nan
+    min_pixels = 10  # Número mínimo absoluto para evitar erro no cálculo
+    if valid_value_count < min_pixels:
+        if verbose:
+            print(f"SSIM warning: Too few valid values ({valid_value_count} < {min_pixels})")
+        return np.nan
         
         ssim_value = ssim(y_true_for_ssim, y_pred_for_ssim, data_range=data_range)
         
