@@ -1283,37 +1283,54 @@ if __name__ == '__main__':
     
     processed_monthly_files = {}
     
+    # Replace the problematic code section around line 1303 with this safer version
     for _, row in df.iterrows():
         source_a, source_b = row['source_a'], row['source_b']
         file_name = row['filename_a']
         
-        if not np.isnan(row[f'{metric_type}_q3_a']):
-            q3_values_by_source[source_a].append(row[f'{metric_type}_q3_a'])
-            
-            if 'datetime' in df.columns:
-                date = pd.to_datetime(row['datetime'])
-                year, month = date.year, date.month
+        # Safely check Q3_a values
+        q3_a_column = f'{metric_type}_q3_a'
+        try:
+            q3_a_value = row.get(q3_a_column)
+            is_valid_a = q3_a_value is not None and not np.isnan(float(q3_a_value))
+            if is_valid_a:
+                q3_values_by_source[source_a].append(q3_a_value)
                 
-                file_key = f"{file_name}_{year}_{month}"
-                
-                if (source_a, file_key) not in processed_monthly_files:
-                    key = (source_a, year, month)
-                    monthly_q3_by_source[key].append(row[f'{metric_type}_q3_a'])
-                    processed_monthly_files[(source_a, file_key)] = True
+                if 'datetime' in df.columns:
+                    date = pd.to_datetime(row['datetime'])
+                    year, month = date.year, date.month
+                    
+                    file_key = f"{file_name}_{year}_{month}"
+                    
+                    if (source_a, file_key) not in processed_monthly_files:
+                        key = (source_a, year, month)
+                        monthly_q3_by_source[key].append(q3_a_value)
+                        processed_monthly_files[(source_a, file_key)] = True
+        except (KeyError, TypeError, ValueError):
+            # Skip this entry if there's an error
+            pass
         
-        if not np.isnan(row[f'{metric_type}_q3_b']):
-            q3_values_by_source[source_b].append(row[f'{metric_type}_q3_b'])
-            
-            if 'datetime' in df.columns:
-                date = pd.to_datetime(row['datetime'])
-                year, month = date.year, date.month
+        # Safely check Q3_b values
+        q3_b_column = f'{metric_type}_q3_b'
+        try:
+            q3_b_value = row.get(q3_b_column)
+            is_valid_b = q3_b_value is not None and not np.isnan(float(q3_b_value))
+            if is_valid_b:
+                q3_values_by_source[source_b].append(q3_b_value)
                 
-                file_key = f"{file_name}_{year}_{month}"
-                
-                if (source_b, file_key) not in processed_monthly_files:
-                    key = (source_b, year, month)
-                    monthly_q3_by_source[key].append(row[f'{metric_type}_q3_b'])
-                    processed_monthly_files[(source_b, file_key)] = True
+                if 'datetime' in df.columns:
+                    date = pd.to_datetime(row['datetime'])
+                    year, month = date.year, date.month
+                    
+                    file_key = f"{file_name}_{year}_{month}"
+                    
+                    if (source_b, file_key) not in processed_monthly_files:
+                        key = (source_b, year, month)
+                        monthly_q3_by_source[key].append(q3_b_value)
+                        processed_monthly_files[(source_b, file_key)] = True
+        except (KeyError, TypeError, ValueError):
+            # Skip this entry if there's an error
+            pass
     
     monthly_q3_metrics = []
     
