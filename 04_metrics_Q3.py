@@ -1348,8 +1348,8 @@ if __name__ == '__main__':
             mean_mean_b = selection['mean_b'].mean()
             mean_median_b = selection['median_b'].mean()
             
-            mean_min_both = min(mean_min_a, mean_min_b) if not np.isnan(mean_min_a) and not np.isnan(mean_min_b) else np.nan
-            mean_max_both = max(mean_max_a, mean_max_b) if not np.isnan(mean_max_a) and not np.isnan(mean_max_b) else np.nan
+            mean_min_both = selection['min_both'].mean()
+            mean_max_both = selection['max_both'].mean()
             mean_mean_both = selection['mean_both'].mean()
             mean_median_both = selection['median_both'].mean()
             mean_data_range = mean_max_both - mean_min_both if not np.isnan(mean_max_both) and not np.isnan(mean_min_both) else np.nan
