@@ -327,15 +327,11 @@ def calculate_ssim(y_true, y_pred, verbose=False):
             similarity = 1.0 - (mean_abs_diff / max_possible_diff)
             if verbose:
                 print(f"Computed similarity for constant images: {similarity:.4f}")
-            if similarity < 0.5:
-                similarity = 2 * similarity - 1
-                if verbose:
-                    print(f"Adjusted similarity to SSIM scale [-1,1]: {similarity:.4f}")
             return similarity
             
         if verbose:
-            print("Unable to compute meaningful similarity, returning -1.0")
-        return -1.0     
+            print("Unable to compute meaningful similarity, returning 0.0")
+        return 0.0
     
     y_true_for_ssim = y_true.copy()
     y_pred_for_ssim = y_pred.copy()
@@ -351,13 +347,10 @@ def calculate_ssim(y_true, y_pred, verbose=False):
         if verbose:
             print("Zero data range detected, using default value of 1.0")
     
-    min_pixels = 100
-    if valid_value_count < min_pixels:
-        if verbose:
-            print(f"SSIM warning: Too few valid values ({valid_value_count} < {min_pixels})")
-        return np.nan
-
     try:
+        if valid_percentage < 50 and verbose:
+            print(f"SSIM warning: Less than 50% valid values ({valid_percentage:.2f}%)")
+        
         ssim_value = ssim(y_true_for_ssim, y_pred_for_ssim, data_range=data_range)
         
         if np.isnan(ssim_value) or np.isinf(ssim_value):
@@ -368,7 +361,6 @@ def calculate_ssim(y_true, y_pred, verbose=False):
         if verbose:
             print(f"SSIM calculation successful: {ssim_value:.4f}")
         return ssim_value
-    
     except Exception as e:
         
         if y_true.shape != y_pred.shape:
@@ -411,94 +403,41 @@ def calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_q3, verbose=False):
         valid_percent = valid_value_count / valid_q3_mask.size * 100
         print(f"Valid values in Q3 mask: {valid_value_count}/{valid_q3_mask.size} ({valid_percent:.2f}%)")
     
-    valid_percentage = valid_value_count / valid_q3_mask.size * 100
-    min_values = 100 
+    min_values = 100
     if valid_value_count < min_values:
         if verbose:
-            print(f"SSIM warning: Too few valid values in Q3 mask ({valid_value_count} < {min_values}, {valid_percentage:.2f}%)")
+            print(f"Too few valid values in Q3 mask: {valid_value_count} < {min_values}")
         return np.nan
     
     y_true_q3_values = y_true_2d[valid_q3_mask]
-    y_pred_q3_values = y_pred_2d[valid_q3_mask]
-
     if len(y_true_q3_values) == 0:
         if verbose:
             print("No valid values in Q3 mask for SSIM calculation")
         return np.nan
-
-    min_variance = 1e-6
-    true_var = np.var(y_true_q3_values)
-    pred_var = np.var(y_pred_q3_values)
-
-    if true_var < min_variance or pred_var < min_variance:
+    
+    constant_value = np.mean(y_true_q3_values)
+    
+    y_true_q3[~valid_q3_mask] = constant_value
+    y_pred_q3[~valid_q3_mask] = constant_value
+    
+    data_range = max(
+        np.max(y_true_2d[valid_q3_mask]) - np.min(y_true_2d[valid_q3_mask]),
+        np.max(y_pred_2d[valid_q3_mask]) - np.min(y_pred_2d[valid_q3_mask])
+    )
+    if data_range == 0:
+        data_range = 1.0
         if verbose:
-            print(f"Low variance detected in Q3 values: true_var={true_var:.6f}, pred_var={pred_var:.6f}")
-        
-        if np.allclose(y_true_q3_values, y_pred_q3_values, rtol=1e-5, atol=1e-8):
-            if verbose:
-                print("Q3 values are constant and identical, returning 1.0")
-            return 1.0
-        
-        mean_abs_diff = np.mean(np.abs(y_true_q3_values - y_pred_q3_values))
-        max_possible_diff = max(np.max(y_true_q3_values), np.max(y_pred_q3_values)) - min(np.min(y_true_q3_values), np.min(y_pred_q3_values))
-        
-        if max_possible_diff > 0:
-            similarity = 1.0 - (mean_abs_diff / max_possible_diff)
-            if verbose:
-                print(f"Computed similarity for constant images: {similarity:.4f}")
-            # Converter de [0,1] para [-1,1] para consistência com SSIM normal
-            if similarity < 0.5:
-                similarity = 2 * similarity - 1
-                if verbose:
-                    print(f"Adjusted similarity to SSIM scale [-1,1]: {similarity:.4f}")
-            return similarity
-            
+            print("Zero data range in Q3 values, using default value of 1.0")
+    
+    try:
+        ssim_value = ssim(y_true_q3, y_pred_q3, data_range=data_range)
         if verbose:
-            print("Unable to compute meaningful similarity, returning -1.0")
-        return -1.0
-
-        constant_value = np.mean(y_true_q3_values)
-        
-        y_true_q3[~valid_q3_mask] = constant_value
-        y_pred_q3[~valid_q3_mask] = constant_value
-        
-        data_range = max(
-            np.max(y_true_2d[valid_q3_mask]) - np.min(y_true_2d[valid_q3_mask]),
-            np.max(y_pred_2d[valid_q3_mask]) - np.min(y_pred_2d[valid_q3_mask])
-        )
-        if data_range == 0:
-            data_range = 1.0
-            if verbose:
-                print("Zero data range in Q3 values, using default value of 1.0")
-        
-        try:
-            ssim_value = ssim(y_true_q3, y_pred_q3, data_range=data_range)
-            if verbose:
-                print(f"Q3-masked SSIM calculation: {ssim_value:.4f}")
-            return ssim_value
-        except Exception as e:
-        
-            if y_true_2d.shape != y_pred_2d.shape:
-                if verbose:
-                    print(f"Attempting Q3-masked SSIM with resized arrays due to shape mismatch")
-                
-                min_height = min(y_true_2d.shape[0], y_pred_2d.shape[0])
-                min_width = min(y_true_2d.shape[1], y_pred_2d.shape[1])
-                y_true_resized = y_true_q3[:min_height, :min_width]
-                y_pred_resized = y_pred_q3[:min_height, :min_width]
-                
-                try:
-                    result = ssim(y_true_resized, y_pred_resized, data_range=data_range)
-                    if verbose:
-                        print(f"Q3-masked SSIM with resized arrays successful: {result:.4f}")
-                    return result
-                except Exception as e2:
-                    if verbose:
-                        print(f"Q3-masked SSIM with resized arrays failed: {str(e2)}")
-                    return np.nan
-            if verbose:
-                print(f"Error calculating Q3-masked SSIM: {e}")
-            return np.nan
+            print(f"Q3-masked SSIM calculation: {ssim_value:.4f}")
+        return ssim_value
+    except Exception as e:
+        if verbose:
+            print(f"Error calculating Q3-masked SSIM: {e}")
+        return np.nan
 
 def fisher_z_transform(r):
     """Transforma correlação r para valor z, tratando correlações perfeitas."""
@@ -908,31 +847,30 @@ if __name__ == '__main__':
     higher_is_better = metric_type in ['pearson', 'r2', 'cosine', 'ssim']
     
     base_datasets = {
-        'embrace': [
-            'TF3_EMBRACE_TEC_maps_2024_0800',
-            'TF3_EMBRACE_TEC_maps_2024_1600',
-            'TF3_EMBRACE_TEC_maps_2024_2000_0400'
-        ],
-        
-        'maggia': [
-            'TF3_MAGGIA_TEC_maps_2024_0800',
-            'TF3_MAGGIA_TEC_maps_2024_1600',
-            'TF3_MAGGIA_TEC_maps_2024_2000_0400'
-        ],
-        'nagoya': [
-            'TF3_Nagoya_TEC_maps_2024_0800',
-            'TF3_Nagoya_TEC_maps_2024_1600',
-            'TF3_Nagoya_TEC_maps_2024_2000_0400'
-        ]
-    }
+            'embrace': [
+                'EMBRACE_TEC_maps'
+            ],
+            'igs': [
+                'IGS_TEC_maps'
+            ],
+            'maggia': [
+                'MAGGIA_TEC_maps'
+            ],
+            'nagoya': [
+                'Nagoya_TEC_maps'
+            ]
+        }
     
     datasets = {source: [f"{dataset}_{dataset_suffix}" for dataset in dataset_list 
                         if not filter_mapas3 or dataset.startswith('mapas3')] 
                 for source, dataset_list in base_datasets.items()}
     
     comparisons = [
+        ['embrace', 'igs'],
         ['embrace', 'maggia'],
         ['embrace', 'nagoya'],
+        ['igs', 'maggia'],
+        ['igs', 'nagoya'],
         ['maggia', 'nagoya']
     ]
     
@@ -1070,35 +1008,15 @@ if __name__ == '__main__':
 
                     mask_a_q3, q3_a = calculate_q3_mask(map_a, verbose=file_verbose)
                     mask_b_q3, q3_b = calculate_q3_mask(map_b, verbose=file_verbose)
-
-                    valid_q3_a = False
-                    valid_q3_b = False
-
-                    min_values = 100 
-
-                    if mask_a_q3 is not None:
-                        valid_pixels_a = mask_a_q3.sum()
-                        total_pixels_a = mask_a_q3.size
-                        valid_percent_a = (valid_pixels_a / total_pixels_a) * 100
-                        valid_q3_a = valid_pixels_a >= min_values  
-                        
-                    if mask_b_q3 is not None:
-                        valid_pixels_b = mask_b_q3.sum()
-                        total_pixels_b = mask_b_q3.size
-                        valid_percent_b = (valid_pixels_b / total_pixels_b) * 100
-                        valid_q3_b = valid_pixels_b >= min_values  
-
+                    
+                    min_values = 100
+                    valid_q3_a = mask_a_q3 is not None and mask_a_q3.sum() >= min_values
+                    valid_q3_b = mask_b_q3 is not None and mask_b_q3.sum() >= min_values
+                    
                     if file_verbose:
                         print(f"Q3 mask validation:")
-                        if mask_a_q3 is not None:
-                            print(f"  Map A: Q3 value={q3_a:.4f}, Valid pixels: {valid_pixels_a}/{total_pixels_a} ({valid_percent_a:.2f}%), Valid mask: {'YES' if valid_q3_a else 'NO'}")
-                        else:
-                            print(f"  Map A: Q3 value={q3_a:.4f}, No valid mask")
-                            
-                        if mask_b_q3 is not None:
-                            print(f"  Map B: Q3 value={q3_b:.4f}, Valid pixels: {valid_pixels_b}/{total_pixels_b} ({valid_percent_b:.2f}%), Valid mask: {'YES' if valid_q3_b else 'NO'}")
-                        else:
-                            print(f"  Map B: Q3 value={q3_b:.4f}, No valid mask")
+                        print(f"  Map A: Q3 value={q3_a:.4f}, Valid mask: {'YES' if valid_q3_a else 'NO'}")
+                        print(f"  Map B: Q3 value={q3_b:.4f}, Valid mask: {'YES' if valid_q3_b else 'NO'}")
                     
                     if swap_ytrue_ypred and metric_type in ['r2', 'residual', 'max_residual', 'min_residual']:
                         y_true = map_b_flat
@@ -1283,54 +1201,37 @@ if __name__ == '__main__':
     
     processed_monthly_files = {}
     
-    # Replace the problematic code section around line 1303 with this safer version
     for _, row in df.iterrows():
         source_a, source_b = row['source_a'], row['source_b']
         file_name = row['filename_a']
         
-        # Safely check Q3_a values
-        q3_a_column = f'{metric_type}_q3_a'
-        try:
-            q3_a_value = row.get(q3_a_column)
-            is_valid_a = q3_a_value is not None and not np.isnan(float(q3_a_value))
-            if is_valid_a:
-                q3_values_by_source[source_a].append(q3_a_value)
+        if not np.isnan(row[f'{metric_type}_q3_a']):
+            q3_values_by_source[source_a].append(row[f'{metric_type}_q3_a'])
+            
+            if 'datetime' in df.columns:
+                date = pd.to_datetime(row['datetime'])
+                year, month = date.year, date.month
                 
-                if 'datetime' in df.columns:
-                    date = pd.to_datetime(row['datetime'])
-                    year, month = date.year, date.month
-                    
-                    file_key = f"{file_name}_{year}_{month}"
-                    
-                    if (source_a, file_key) not in processed_monthly_files:
-                        key = (source_a, year, month)
-                        monthly_q3_by_source[key].append(q3_a_value)
-                        processed_monthly_files[(source_a, file_key)] = True
-        except (KeyError, TypeError, ValueError):
-            # Skip this entry if there's an error
-            pass
+                file_key = f"{file_name}_{year}_{month}"
+                
+                if (source_a, file_key) not in processed_monthly_files:
+                    key = (source_a, year, month)
+                    monthly_q3_by_source[key].append(row[f'{metric_type}_q3_a'])
+                    processed_monthly_files[(source_a, file_key)] = True
         
-        # Safely check Q3_b values
-        q3_b_column = f'{metric_type}_q3_b'
-        try:
-            q3_b_value = row.get(q3_b_column)
-            is_valid_b = q3_b_value is not None and not np.isnan(float(q3_b_value))
-            if is_valid_b:
-                q3_values_by_source[source_b].append(q3_b_value)
+        if not np.isnan(row[f'{metric_type}_q3_b']):
+            q3_values_by_source[source_b].append(row[f'{metric_type}_q3_b'])
+            
+            if 'datetime' in df.columns:
+                date = pd.to_datetime(row['datetime'])
+                year, month = date.year, date.month
                 
-                if 'datetime' in df.columns:
-                    date = pd.to_datetime(row['datetime'])
-                    year, month = date.year, date.month
-                    
-                    file_key = f"{file_name}_{year}_{month}"
-                    
-                    if (source_b, file_key) not in processed_monthly_files:
-                        key = (source_b, year, month)
-                        monthly_q3_by_source[key].append(q3_b_value)
-                        processed_monthly_files[(source_b, file_key)] = True
-        except (KeyError, TypeError, ValueError):
-            # Skip this entry if there's an error
-            pass
+                file_key = f"{file_name}_{year}_{month}"
+                
+                if (source_b, file_key) not in processed_monthly_files:
+                    key = (source_b, year, month)
+                    monthly_q3_by_source[key].append(row[f'{metric_type}_q3_b'])
+                    processed_monthly_files[(source_b, file_key)] = True
     
     monthly_q3_metrics = []
     
