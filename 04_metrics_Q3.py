@@ -327,11 +327,15 @@ def calculate_ssim(y_true, y_pred, verbose=False):
             similarity = 1.0 - (mean_abs_diff / max_possible_diff)
             if verbose:
                 print(f"Computed similarity for constant images: {similarity:.4f}")
+            if similarity < 0.5:
+                similarity = 2 * similarity - 1
+                if verbose:
+                    print(f"Adjusted similarity to SSIM scale [-1,1]: {similarity:.4f}")
             return similarity
             
         if verbose:
-            print("Unable to compute meaningful similarity, returning 0.0")
-        return 0.0
+            print("Unable to compute meaningful similarity, returning -1.0")
+        return -1.0     
     
     y_true_for_ssim = y_true.copy()
     y_pred_for_ssim = y_pred.copy()
@@ -470,6 +474,7 @@ constant_value = np.mean(y_true_q3_values)
             print(f"Q3-masked SSIM calculation: {ssim_value:.4f}")
         return ssim_value
     except Exception as e:
+        # Se houver erro por diferença de dimensões
         if y_true_2d.shape != y_pred_2d.shape:
             if verbose:
                 print(f"Attempting Q3-masked SSIM with resized arrays due to shape mismatch")
@@ -488,7 +493,6 @@ constant_value = np.mean(y_true_q3_values)
                 if verbose:
                     print(f"Q3-masked SSIM with resized arrays failed: {str(e2)}")
                 return np.nan
-        
         if verbose:
             print(f"Error calculating Q3-masked SSIM: {e}")
         return np.nan
