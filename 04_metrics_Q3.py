@@ -803,8 +803,6 @@ if __name__ == '__main__':
                         help='Number of top maps to display')
     parser.add_argument('--check-existing', type=str, default=None,
                         help='Check an existing results CSV file')
-    parser.add_argument('--filter-mapas3', action='store_true',
-                        help='Filter only directories starting with mapas3')
     parser.add_argument('--swap-ytrue-ypred', action='store_true',
                         help='Swap y_true and y_pred for R² and residual calculations')
     parser.add_argument('--normalize-residuals', action='store_true',
@@ -835,7 +833,6 @@ if __name__ == '__main__':
     dataset_suffix = args.dataset_suffix or ('interp_raster' if metric_type == 'ssim' else 'interp')
     verify_stats = args.verify_stats
     top_n = args.top_n
-    filter_mapas3 = args.filter_mapas3
     swap_ytrue_ypred = args.swap_ytrue_ypred
     normalize_residuals = args.normalize_residuals
     verbose = args.verbose
@@ -860,11 +857,7 @@ if __name__ == '__main__':
                 'Nagoya_TEC_maps'
             ]
         }
-    
-    datasets = {source: [f"{dataset}_{dataset_suffix}" for dataset in dataset_list 
-                        if not filter_mapas3 or dataset.startswith('mapas3')] 
-                for source, dataset_list in base_datasets.items()}
-    
+   
     comparisons = [
         ['embrace', 'igs'],
         ['embrace', 'maggia'],
