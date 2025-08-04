@@ -933,7 +933,9 @@ if __name__ == '__main__':
                 'Nagoya_TEC_maps'
             ]
         }
-   
+    datasets = {source: [f"{dataset}_{dataset_suffix}" for dataset in dataset_list] 
+                for source, dataset_list in base_datasets.items()}
+
     comparisons = [
         ['embrace', 'igs'],
         ['embrace', 'maggia'],
