@@ -11,7 +11,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 def calculate_q3_mask(map_data, verbose=False):
-    """Calcula Q3 (75º percentil) e retorna máscara para valores >= Q3."""
+    
     if verbose:
         print(f"Calculating Q3 mask for data shape {map_data.shape}")
     
@@ -70,7 +70,7 @@ def calculate_q3_mask(map_data, verbose=False):
     return mask, q3
 
 def calculate_pearson(y_true, y_pred, filename="unknown", value_mask=None):
-    """Calcula a correlação de Pearson, tratando casos especiais."""
+    
     if value_mask is not None:
         if value_mask.sum() < 2:
             return np.nan
@@ -104,7 +104,7 @@ def calculate_pearson(y_true, y_pred, filename="unknown", value_mask=None):
         return np.nan
 
 def calculate_r2_score(y_true, y_pred, filename="unknown", value_mask=None):
-    """Calcula o R² como o quadrado da correlação de Pearson."""
+    
     if value_mask is not None:
         if value_mask.sum() < 2:
             return np.nan, np.nan
@@ -116,7 +116,7 @@ def calculate_r2_score(y_true, y_pred, filename="unknown", value_mask=None):
     return pearson_r ** 2, pearson_r
 
 def calculate_rmse(y_true, y_pred, value_mask=None):
-    """Calcula o RMSE, tratando casos especiais."""
+    
     if value_mask is not None:
         if value_mask.sum() < 2:
             return np.nan
@@ -128,7 +128,7 @@ def calculate_rmse(y_true, y_pred, value_mask=None):
     return np.sqrt(mean_squared_error(y_true[valid_mask], y_pred[valid_mask]))
 
 def calculate_mse(y_true, y_pred, value_mask=None):
-    """Calcula o MSE, tratando casos especiais."""
+    
     if value_mask is not None:
         if value_mask.sum() < 2:
             return np.nan
@@ -140,7 +140,7 @@ def calculate_mse(y_true, y_pred, value_mask=None):
     return mean_squared_error(y_true[valid_mask], y_pred[valid_mask])
 
 def calculate_mae(y_true, y_pred, value_mask=None):
-    """Calcula o MAE, tratando casos especiais."""
+    
     if value_mask is not None:
         if value_mask.sum() < 2:
             return np.nan
@@ -152,7 +152,7 @@ def calculate_mae(y_true, y_pred, value_mask=None):
     return mean_absolute_error(y_true[valid_mask], y_pred[valid_mask])
 
 def calculate_residual_error(y_true, y_pred, normalize=False, filename="unknown", value_mask=None):
-    """Calcula o erro residual médio absoluto com validação robusta."""
+    
     if value_mask is not None:
         if value_mask.sum() < 2:
             return np.nan
@@ -181,7 +181,7 @@ def calculate_residual_error(y_true, y_pred, normalize=False, filename="unknown"
     return np.mean(np.abs(y_true_valid - y_pred_valid))
 
 def calculate_max_residual_error(y_true, y_pred, normalize=False, filename="unknown", value_mask=None):
-    """Calcula o erro residual máximo com validação robusta."""
+    
     if value_mask is not None:
         if value_mask.sum() < 2:
             return np.nan
@@ -210,7 +210,7 @@ def calculate_max_residual_error(y_true, y_pred, normalize=False, filename="unkn
     return np.max(np.abs(y_true_valid - y_pred_valid))
 
 def calculate_min_residual_error(y_true, y_pred, percentile=5.0, normalize=False, filename="unknown", value_mask=None):
-    """Calcula o erro residual no percentil especificado com validação robusta."""
+    
     if value_mask is not None:
         if value_mask.sum() < 2:
             return np.nan
@@ -239,7 +239,7 @@ def calculate_min_residual_error(y_true, y_pred, percentile=5.0, normalize=False
     return np.percentile(np.abs(y_true_valid - y_pred_valid), percentile)
 
 def calculate_cosine_similarity(y_true, y_pred, value_mask=None):
-    """Calcula a similaridade de cosseno, tratando casos especiais."""
+    
     if value_mask is not None:
         if value_mask.sum() < 2:
             return np.nan
@@ -258,7 +258,7 @@ def calculate_cosine_similarity(y_true, y_pred, value_mask=None):
     return dot_product / (norm_y_true * norm_y_pred)
 
 def calculate_huber_loss(y_true, y_pred, delta=1.0, value_mask=None):
-    """Calcula a perda de Huber, tratando casos especiais."""
+    
     if value_mask is not None:
         if value_mask.sum() < 2:
             return np.nan
@@ -274,7 +274,7 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0, value_mask=None):
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
 def calculate_ssim(y_true, y_pred, verbose=False):
-    """Calcula o SSIM apenas nas regiões onde ambas as imagens têm valores não-NaN."""
+    
     # Converte para escala de cinza se for imagem colorida
     if len(y_true.shape) > 2 and y_true.shape[2] > 1:
         y_true = np.mean(y_true, axis=2)
@@ -440,7 +440,7 @@ def calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_q3, verbose=False):
         return np.nan
 
 def fisher_z_transform(r):
-    """Transforma correlação r para valor z, tratando correlações perfeitas."""
+    
     if np.isnan(r):
         return np.nan
     if abs(r) >= 1:
@@ -455,10 +455,9 @@ def fisher_z_inverse(z):
     return (np.exp(2 * z) - 1) / (np.exp(2 * z) + 1)
 
 def calculate_pearson_avg_with_fisher(values):
-    """Calcula a média de correlação de Pearson usando transformação Fisher Z."""
+    
     values_array = np.asarray(values, dtype=float)
     
-    # Agora podemos verificar valores NaN com segurança
     valid_values = values_array[~np.isnan(values_array)]
     
     if len(valid_values) == 0:
@@ -471,11 +470,11 @@ def calculate_pearson_avg_with_fisher(values):
     return fisher_z_inverse(np.mean(z_values))
 
 def pearson_fisher_agg(series):
-    """Função de agregação para calcular média de correlação com Fisher Z."""
+    
     return calculate_pearson_avg_with_fisher(series.values)
 
 def calculate_strict_stats(map_a, map_b):
-    """Calcula estatísticas consistentes para os mapas, incluindo Q1 e Q3."""
+    
     map_a_flat = map_a.flatten() if len(map_a.shape) > 1 else map_a
     map_b_flat = map_b.flatten() if len(map_b.shape) > 1 else map_b
     
@@ -522,7 +521,7 @@ def calculate_strict_stats(map_a, map_b):
     }
 
 def load_image(filepath, verbose=False):
-    """Carrega uma imagem ou arquivo .npy com melhor tratamento de erro."""
+    
     if filepath.suffix.lower() in ['.png', '.jpg', '.jpeg', '.tif', '.tiff']:
         try:
             img = imread(filepath)
@@ -564,7 +563,7 @@ def load_image(filepath, verbose=False):
         return None
 
 def verify_combined_stats(selection):
-    """Verifica consistência das estatísticas combinadas."""
+    
     inconsistencies = 0
     for idx, row in selection.iterrows():
         max_a = row['max_a']
@@ -578,7 +577,7 @@ def verify_combined_stats(selection):
     return inconsistencies == 0
 
 def calculate_pair_stats(df, metric_type):
-    """Calcula estatísticas para cada par de fontes (source_a, source_b)"""
+    
     pair_stats = defaultdict(list)
     pair_counts = defaultdict(int)
     
@@ -617,7 +616,7 @@ def calculate_pair_stats(df, metric_type):
     return pair_metrics
 
 def calculate_monthly_metrics(month_data, metric_type):
-    """Calcula média mensal de métricas com tratamento especial para Pearson usando Fisher Z."""
+    
     if metric_type == 'pearson':
         pearson_values = month_data[metric_type].values
         return calculate_pearson_avg_with_fisher(pearson_values)
@@ -632,7 +631,7 @@ def calculate_monthly_metrics(month_data, metric_type):
         return np.nanmean(month_data[metric_type].values)
 
 def calculate_temporal_stats(df, metric_type):
-    """Calcula estatísticas temporais com tratamento adequado para correlações de Pearson."""
+    
     if 'datetime' not in df.columns:
         return pd.DataFrame()
         
@@ -677,7 +676,7 @@ def calculate_temporal_stats(df, metric_type):
     return pd.DataFrame(result) if result else pd.DataFrame()
 
 def calculate_monthly_q3_by_source(df, metric_type):
-    """Calcula estatísticas mensais Q3 específicas por fonte."""
+    
     if 'datetime' not in df.columns:
         return pd.DataFrame()
         
@@ -727,7 +726,7 @@ def calculate_monthly_q3_by_source(df, metric_type):
     return pd.DataFrame(result) if result else pd.DataFrame()
 
 def calculate_monthly_general_metrics_by_source(df, metric_type):
-    """Calcula estatísticas mensais agregadas por fonte sem filtro Q3."""
+    
     if 'datetime' not in df.columns:
         return pd.DataFrame()
         
@@ -896,7 +895,7 @@ if __name__ == '__main__':
     if check_images:
         print("\nRunning image loading check for a sample of images...")
         for d in existing_dirs:
-            sample_files = list(d.glob(file_extension))[:5]  # Check first 5 files
+            sample_files = list(d.glob(file_extension))[:5]  
             print(f"\nChecking {len(sample_files)} files in {d.name}:")
             for file_path in sample_files:
                 img = load_image(file_path, verbose=True)
