@@ -288,14 +288,7 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False):
     
     if verbose:
         print(f"Valid values: {valid_value_count}/{valid_mask.size} ({valid_percentage:.2f}%)")
-    
-    min_values = 100 
-    if valid_value_count < min_values:
-        if verbose:
-            print(f"SSIM failed: Too few valid values ({valid_value_count})")
-        return np.nan
 
-    # Use NaN masks directly without replacement
     y_true_masked = np.where(valid_mask, y_true, np.nan)
     y_pred_masked = np.where(valid_mask, y_pred, np.nan)
     
@@ -344,7 +337,7 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False):
         return 0.0
         
     try:
-        # Remove NaN values for SSIM calculation
+        
         y_true_valid = y_true_masked[~np.isnan(y_true_masked)]
         y_pred_valid = y_pred_masked[~np.isnan(y_pred_masked)]
         
