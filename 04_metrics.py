@@ -11,7 +11,6 @@ import warnings
 warnings.filterwarnings('ignore')
 
 def calculate_q3_mask(map_data, verbose=False):
-    
     if verbose:
         print(f"Calculating Q3 mask for data shape {map_data.shape}")
     
@@ -44,28 +43,6 @@ def calculate_q3_mask(map_data, verbose=False):
     if verbose:
         mask_percent = mask_count / map_data.size * 100
         print(f"Values in Q3 mask: {mask_count} ({mask_percent:.2f}%)")
-    
-    min_required = max(100, len(valid_values) * 0.05)
-    if mask_count < min_required:
-        if verbose:
-            print(f"Not enough values in Q3 mask, trying more lenient threshold (min: {min_required})")
-        
-        q3_adjusted = np.percentile(valid_values, 65)  
-        if verbose:
-            print(f"Adjusted to 65th percentile: {q3_adjusted:.4f}")
-        
-        mask = non_nan_mask & (map_data >= q3_adjusted)
-        mask_count = np.sum(mask)
-        
-        if verbose:
-            print(f"Values in adjusted Q3 mask: {mask_count} ({mask_count/map_data.size*100:.2f}%)")
-        
-        if mask_count >= min_required:
-            return mask, q3_adjusted
-        
-        if verbose:
-            print("Still not enough values with adjusted threshold")
-        return None, q3
     
     return mask, q3
 
