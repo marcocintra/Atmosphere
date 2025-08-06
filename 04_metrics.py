@@ -277,41 +277,6 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False):
         if verbose:
             print(f"Warning: Global data range is extremely small: {global_data_range}")
         global_data_range = 1.0
-    
-    min_variance = 1e-6
-    true_var = np.nanvar(y_true_masked)
-    pred_var = np.nanvar(y_pred_masked)
-    
-    if verbose:
-        print(f"Variance check: y_true_var={true_var:.6f}, y_pred_var={pred_var:.6f}, min={min_variance}")
-        print(f"Global data range: [{global_min:.4f}, {global_max:.4f}] = {global_data_range:.4f}")
-    
-    if true_var < min_variance or pred_var < min_variance:
-        if verbose:
-            print(f"Low variance detected in images")
-            
-        if np.allclose(y_true_masked[~np.isnan(y_true_masked)], 
-                      y_pred_masked[~np.isnan(y_pred_masked)], 
-                      rtol=1e-5, atol=1e-8):
-            if verbose:
-                print("Images are constant and identical, returning 1.0")
-            return 1.0
-            
-        mean_abs_diff = np.nanmean(np.abs(y_true_masked - y_pred_masked))
-        
-        if global_data_range > 0:
-            normalized_diff = mean_abs_diff / global_data_range
-            similarity = 1.0 - 2.0 * normalized_diff
-            
-            similarity = max(-1.0, min(1.0, similarity))
-            
-            if verbose:
-                print(f"Computed similarity for low variance images: {similarity:.4f}")
-            return similarity
-            
-        if verbose:
-            print("Unable to compute meaningful similarity, returning 0.0")
-        return 0.0
         
     try:
         
