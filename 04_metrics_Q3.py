@@ -273,22 +273,16 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0, value_mask=None):
     linear = abs_errors - quadratic
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
-def calculate_ssim(y_true, y_pred, verbose=False):
+def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False):
+    """Calculate SSIM between two images, handling NaN values and optional Q3 mask"""
     
-    is_multichannel = False
-    if len(y_true.shape) > 2 and y_true.shape[2] > 1:
-        is_multichannel = True
-    
-    if verbose:
-        print(f"\nSSIM calculation:")
-        print(f"Input shapes: y_true={y_true.shape}, y_pred={y_pred.shape}")
-        print(f"Data ranges: y_true=[{np.nanmin(y_true):.4f}, {np.nanmax(y_true):.4f}], "
-              f"y_pred=[{np.nanmin(y_pred):.4f}, {np.nanmax(y_pred):.4f}]")
-        print(f"NaN counts: y_true={np.isnan(y_true).sum()}, y_pred={np.isnan(y_pred).sum()}")
-        if is_multichannel:
-            print(f"Processing as multichannel image with {y_true.shape[2]} channels")
-    
-    valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    if value_mask is not None:
+        y_true = y_true * value_mask
+        y_pred = y_pred * value_mask
+        valid_mask = value_mask & ~np.isnan(y_true) & ~np.isnan(y_pred)
+    else:
+        valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+        
     valid_value_count = np.sum(valid_mask)
     valid_percentage = valid_value_count / valid_mask.size * 100
     
@@ -300,9 +294,10 @@ def calculate_ssim(y_true, y_pred, verbose=False):
         if verbose:
             print(f"SSIM failed: Too few valid values ({valid_value_count})")
         return np.nan
-    
-    y_true_valid = y_true[valid_mask]
-    y_pred_valid = y_pred[valid_mask]
+
+    # Use NaN masks directly without replacement
+    y_true_masked = np.where(valid_mask, y_true, np.nan)
+    y_pred_masked = np.where(valid_mask, y_pred, np.nan)
     
     global_min = min(np.nanmin(y_true), np.nanmin(y_pred))
     global_max = max(np.nanmax(y_true), np.nanmax(y_pred))
@@ -314,8 +309,8 @@ def calculate_ssim(y_true, y_pred, verbose=False):
         global_data_range = 1.0
     
     min_variance = 1e-6
-    true_var = np.var(y_true_valid)
-    pred_var = np.var(y_pred_valid)
+    true_var = np.nanvar(y_true_masked)
+    pred_var = np.nanvar(y_pred_masked)
     
     if verbose:
         print(f"Variance check: y_true_var={true_var:.6f}, y_pred_var={pred_var:.6f}, min={min_variance}")
@@ -324,16 +319,17 @@ def calculate_ssim(y_true, y_pred, verbose=False):
     if true_var < min_variance or pred_var < min_variance:
         if verbose:
             print(f"Low variance detected in images")
-        
-        if np.allclose(y_true_valid, y_pred_valid, rtol=1e-5, atol=1e-8):
+            
+        if np.allclose(y_true_masked[~np.isnan(y_true_masked)], 
+                      y_pred_masked[~np.isnan(y_pred_masked)], 
+                      rtol=1e-5, atol=1e-8):
             if verbose:
                 print("Images are constant and identical, returning 1.0")
             return 1.0
-        
-        mean_abs_diff = np.mean(np.abs(y_true_valid - y_pred_valid))
+            
+        mean_abs_diff = np.nanmean(np.abs(y_true_masked - y_pred_masked))
         
         if global_data_range > 0:
-            
             normalized_diff = mean_abs_diff / global_data_range
             similarity = 1.0 - 2.0 * normalized_diff
             
@@ -346,24 +342,21 @@ def calculate_ssim(y_true, y_pred, verbose=False):
         if verbose:
             print("Unable to compute meaningful similarity, returning 0.0")
         return 0.0
-    
-    y_true_for_ssim = y_true.copy()
-    y_pred_for_ssim = y_pred.copy()
-    
-    constant_value = np.mean(y_true_valid)
-    y_true_for_ssim[~valid_mask] = constant_value
-    y_pred_for_ssim[~valid_mask] = constant_value
-    
+        
     try:
+        # Remove NaN values for SSIM calculation
+        y_true_valid = y_true_masked[~np.isnan(y_true_masked)]
+        y_pred_valid = y_pred_masked[~np.isnan(y_pred_masked)]
+        
         if valid_percentage < 50 and verbose:
             print(f"SSIM warning: Less than 50% valid values ({valid_percentage:.2f}%)")
-        
+            
         ssim_kwargs = {
             'data_range': global_data_range,
-            'channel_axis': 2 if is_multichannel else None
+            'channel_axis': 2 if len(y_true.shape) > 2 and y_true.shape[2] > 1 else None
         }
         
-        ssim_value = ssim(y_true_for_ssim, y_pred_for_ssim, **ssim_kwargs)
+        ssim_value = ssim(y_true_masked, y_pred_masked, **ssim_kwargs)
         
         if np.isnan(ssim_value) or np.isinf(ssim_value):
             if verbose:
@@ -373,147 +366,10 @@ def calculate_ssim(y_true, y_pred, verbose=False):
         if verbose:
             print(f"SSIM calculation successful: {ssim_value:.4f}")
         return ssim_value
+        
     except Exception as e:
-        
-        if y_true.shape != y_pred.shape:
-            if verbose:
-                print(f"Attempting SSIM with resized arrays")
-            
-            min_height = min(y_true.shape[0], y_pred.shape[0])
-            min_width = min(y_true.shape[1], y_pred.shape[1])
-            y_true_resized = y_true_for_ssim[:min_height, :min_width]
-            y_pred_resized = y_pred_for_ssim[:min_height, :min_width]
-            
-            try:
-                
-                if len(y_true_resized.shape) > 2 and y_true_resized.shape[2] > 1:
-                    is_multichannel = True
-                else:
-                    is_multichannel = False
-                
-                ssim_kwargs = {
-                    'data_range': global_data_range,
-                    'multichannel': is_multichannel
-                }
-                
-                result = ssim(y_true_resized, y_pred_resized, **ssim_kwargs)
-                if verbose:
-                    print(f"SSIM with resized arrays successful: {result:.4f}")
-                return result
-            except Exception as e2:
-                if verbose:
-                    print(f"SSIM with resized arrays failed: {str(e2)}")
-                return np.nan
-        
         if verbose:
             print(f"SSIM calculation failed: {str(e)}")
-        return np.nan
-
-def calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_q3, verbose=False):
-    """Calculate SSIM with Q3 mask applied and improved robustness."""
-    if mask_q3 is None:
-        if verbose:
-            print("No Q3 mask provided for SSIM calculation")
-        return np.nan
-    
-    is_multichannel = False
-    if len(y_true_2d.shape) > 2 and y_true_2d.shape[2] > 1:
-        is_multichannel = True
-        if verbose:
-            print(f"Processing as multichannel image with {y_true_2d.shape[2]} channels")
-    
-    y_true_q3 = y_true_2d.copy()
-    y_pred_q3 = y_pred_2d.copy()
-    
-    valid_q3_mask = mask_q3 & ~np.isnan(y_true_2d) & ~np.isnan(y_pred_2d)
-    valid_value_count = np.sum(valid_q3_mask)
-    
-    if verbose:
-        valid_percent = valid_value_count / valid_q3_mask.size * 100
-        print(f"Valid values in Q3 mask: {valid_value_count}/{valid_q3_mask.size} ({valid_percent:.2f}%)")
-    
-    min_values = 100
-    if valid_value_count < min_values:
-        if verbose:
-            print(f"Too few valid values in Q3 mask: {valid_value_count} < {min_values}")
-        return np.nan
-    
-    y_true_q3_values = y_true_2d[valid_q3_mask]
-    y_pred_q3_values = y_pred_2d[valid_q3_mask]
-    
-    if len(y_true_q3_values) == 0:
-        if verbose:
-            print("No valid values in Q3 mask for SSIM calculation")
-        return np.nan
-    
-    global_min = min(np.nanmin(y_true_2d), np.nanmin(y_pred_2d))
-    global_max = max(np.nanmax(y_true_2d), np.nanmax(y_pred_2d))
-    global_data_range = global_max - global_min
-    
-    if global_data_range < 1e-10:
-        global_data_range = 1.0
-        if verbose:
-            print(f"Global data range is extremely small, using default value of 1.0")
-    
-    constant_value = np.mean(y_true_q3_values)
-    
-    y_true_q3[~valid_q3_mask] = constant_value
-    y_pred_q3[~valid_q3_mask] = constant_value
-    
-    true_var = np.var(y_true_q3_values)
-    pred_var = np.var(y_pred_q3_values)
-    min_variance = 1e-6
-    
-    if verbose:
-        print(f"Variance check (Q3): y_true_var={true_var:.6f}, y_pred_var={pred_var:.6f}, min={min_variance}")
-        print(f"Global data range: [{global_min:.4f}, {global_max:.4f}] = {global_data_range:.4f}")
-    
-    if true_var < min_variance or pred_var < min_variance:
-        if verbose:
-            print(f"Low variance detected in Q3 masked images")
-        
-        if np.allclose(y_true_q3_values, y_pred_q3_values, rtol=1e-5, atol=1e-8):
-            if verbose:
-                print("Q3 masked images are constant and identical, returning 1.0")
-            return 1.0
-        
-        mean_abs_diff = np.mean(np.abs(y_true_q3_values - y_pred_q3_values))
-        
-        if global_data_range > 0:
-        
-            normalized_diff = mean_abs_diff / global_data_range
-            similarity = 1.0 - 2.0 * normalized_diff
-            
-            similarity = max(-1.0, min(1.0, similarity))
-            
-            if verbose:
-                print(f"Computed similarity for low variance Q3 masked images: {similarity:.4f}")
-            return similarity
-        
-        if verbose:
-            print("Unable to compute meaningful Q3 similarity, returning 0.0")
-        return 0.0
-    
-    try:
-      
-        ssim_kwargs = {
-            'data_range': global_data_range,
-            'channel_axis': 2 if is_multichannel else None
-        }
-        
-        ssim_value = ssim(y_true_q3, y_pred_q3, **ssim_kwargs)
-        
-        if np.isnan(ssim_value) or np.isinf(ssim_value):
-            if verbose:
-                print(f"Q3-masked SSIM calculation returned invalid value: {ssim_value}")
-            return np.nan
-            
-        if verbose:
-            print(f"Q3-masked SSIM calculation successful: {ssim_value:.4f}")
-        return ssim_value
-    except Exception as e:
-        if verbose:
-            print(f"Error calculating Q3-masked SSIM: {e}")
         return np.nan
 
 def fisher_z_transform(r):
@@ -1130,7 +986,7 @@ if __name__ == '__main__':
                     metric_q3_b = np.nan
                     
                     if valid_q3_a and metric_type == 'ssim':
-                        metric_q3_a = calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_a_q3, verbose=file_verbose)
+                        metric_q3_a = calculate_ssim(y_true_2d, y_pred_2d, mask_a_q3, verbose=file_verbose)
                     elif valid_q3_a:
                         if metric_type == 'pearson':
                             metric_q3_a = calculate_pearson(y_true, y_pred, file_a.name, value_mask=mask_a_q3.flatten())
@@ -1154,7 +1010,7 @@ if __name__ == '__main__':
                             metric_q3_a = calculate_huber_loss(y_true, y_pred, huber_delta, value_mask=mask_a_q3.flatten())
                     
                     if valid_q3_b and metric_type == 'ssim':
-                        metric_q3_b = calculate_ssim_with_q3_mask(y_true_2d, y_pred_2d, mask_b_q3, verbose=file_verbose)
+                        metric_q3_b = calculate_ssim(y_true_2d, y_pred_2d, mask_b_q3, verbose=file_verbose)
                     elif valid_q3_b:
                         if metric_type == 'pearson':
                             metric_q3_b = calculate_pearson(y_true, y_pred, file_a.name, value_mask=mask_b_q3.flatten())
