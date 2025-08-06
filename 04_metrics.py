@@ -929,14 +929,14 @@ if __name__ == '__main__':
                     mask_a_q3, q3_a = calculate_q3_mask(map_a, verbose=file_verbose)
                     mask_b_q3, q3_b = calculate_q3_mask(map_b, verbose=file_verbose)
                     
-                    min_values = 100
-                    valid_q3_a = mask_a_q3 is not None and mask_a_q3.sum() >= min_values
-                    valid_q3_b = mask_b_q3 is not None and mask_b_q3.sum() >= min_values
+                    mask_a_q3, q3_a = calculate_q3_mask(map_a, verbose=file_verbose)
+                    mask_b_q3, q3_b = calculate_q3_mask(map_b, verbose=file_verbose)
+                    
+                    valid_q3_a = mask_a_q3 is not None
+                    valid_q3_b = mask_b_q3 is not None
                     
                     if file_verbose:
                         print(f"Q3 mask validation:")
-                        print(f"  Map A: Q3 value={q3_a:.4f}, Valid mask: {'YES' if valid_q3_a else 'NO'}")
-                        print(f"  Map B: Q3 value={q3_b:.4f}, Valid mask: {'YES' if valid_q3_b else 'NO'}")
                     
                     if swap_ytrue_ypred and metric_type in ['r2', 'residual', 'max_residual', 'min_residual']:
                         y_true = map_b_flat
