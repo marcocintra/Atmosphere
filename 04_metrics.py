@@ -863,9 +863,6 @@ if __name__ == '__main__':
                     mask_a_q3, q3_a = calculate_q3_mask(map_a, verbose=file_verbose)
                     mask_b_q3, q3_b = calculate_q3_mask(map_b, verbose=file_verbose)
                     
-                    mask_a_q3, q3_a = calculate_q3_mask(map_a, verbose=file_verbose)
-                    mask_b_q3, q3_b = calculate_q3_mask(map_b, verbose=file_verbose)
-                    
                     valid_q3_a = mask_a_q3 is not None
                     valid_q3_b = mask_b_q3 is not None
                     
