@@ -759,6 +759,7 @@ if __name__ == '__main__':
     check_images = args.check_images
     debug_skipped = args.debug_skipped
     debug_file = args.debug_file
+    use_fisher_for_ssim = args.ssim_use_fisher
     
     higher_is_better = metric_type in ['pearson', 'r2', 'cosine', 'ssim']
     
