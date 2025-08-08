@@ -392,7 +392,7 @@ def load_image(filepath, verbose=False):
     
     if filepath.suffix.lower() in ['.png', '.jpg', '.jpeg', '.tif', '.tiff']:
         try:
-            img = imread(filepath)
+            img = imread(filepath, as_gray=True)
             
             if verbose:
                 print(f"Loaded image {filepath.name}: shape={img.shape}, dtype={img.dtype}")
@@ -401,11 +401,6 @@ def load_image(filepath, verbose=False):
                 if np.isnan(img).any():
                     print(f"  Image contains {np.isnan(img).sum()} NaN values")
                 print(f"  Value range: [{np.nanmin(img)}, {np.nanmax(img)}]")
-            
-            if len(img.shape) > 2 and img.shape[2] > 1:
-                img = np.mean(img, axis=2)
-                if verbose:
-                    print(f"  Converted to grayscale: shape={img.shape}")
             
             return img
         except Exception as e:
