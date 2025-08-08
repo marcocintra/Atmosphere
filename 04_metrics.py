@@ -254,39 +254,40 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0, value_mask=None):
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
 def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_context="Overall"):
-    
-    print(f"\n--- Início do cálculo SSIM (Contexto: {calculation_context}) ---")
+    # Changed from Portuguese to English
+    print(f"\n--- Start of SSIM calculation (Context: {calculation_context}) ---")
     print(f"y_true shape: {y_true.shape}, dtype: {y_true.dtype}")
     print(f"y_pred shape: {y_pred.shape}, dtype: {y_pred.dtype}")
 
     if value_mask is not None:
-    
-        print(f"Aplicando a máscara fornecida '{calculation_context}'.")
-        print(f"Total de pixels na máscara: {np.sum(value_mask)}")
-        valid_mask = value_mask & ~np.isnan(y_true) & ~np.isnan(y_pred)
+  
+        print(f"Applying provided mask '{calculation_context}'.")
+        print(f"Total pixels in mask: {np.sum(value_mask)}")
     else:
-    
-        print("Nenhuma máscara específica fornecida. Calculando SSIM para todos os pixels válidos (não-NaN) da imagem.")
-        valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+  
+        print("No specific mask provided. Calculating SSIM for all valid pixels (non-NaN) in the image.")
 
+    valid_mask = value_mask & ~np.isnan(y_true) & ~np.isnan(y_pred) if value_mask is not None else ~np.isnan(y_true) & ~np.isnan(y_pred)
     valid_value_count = np.sum(valid_mask)
     valid_percentage = valid_value_count / valid_mask.size * 100
 
-    print(f"Pixels válidos para este cálculo: {valid_value_count}/{valid_mask.size} ({valid_percentage:.2f}%)")
+    print(f"Valid pixels for this calculation: {valid_value_count}/{valid_mask.size} ({valid_percentage:.2f}%)")
     
     if verbose:
         print(f"NaN count in y_true: {np.sum(np.isnan(y_true))}")
         print(f"NaN count in y_pred: {np.sum(np.isnan(y_pred))}")
     
     if valid_value_count < 100: 
-        print(f"AVISO: Número de pixels válidos ({valid_value_count}) é muito baixo. Retornando NaN.")
-        print(f"--- Fim do cálculo SSIM com AVISO (Contexto: {calculation_context}) ---")
+   
+        print(f"WARNING: Number of valid pixels ({valid_value_count}) is too low. Returning NaN.")
+        print(f"--- End of SSIM calculation with WARNING (Context: {calculation_context}) ---")
         return np.nan
 
     rows, cols = np.where(valid_mask)
     if len(rows) == 0:
-        print("ERRO: Nenhum pixel válido encontrado após aplicar a máscara. Retornando NaN.")
-        print(f"--- Fim do cálculo SSIM com ERRO (Contexto: {calculation_context}) ---")
+   
+        print("ERROR: No valid pixels found after applying mask. Returning NaN.")
+        print(f"--- End of SSIM calculation with ERROR (Context: {calculation_context}) ---")
         return np.nan
         
     min_row, max_row = rows.min(), rows.max() + 1
@@ -297,8 +298,9 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_c
     mask_crop = valid_mask[min_row:max_row, min_col:max_col]
     
     if verbose:
-        print(f"Recortando para a região de interesse: rows [{min_row}:{max_row}], cols [{min_col}:{max_col}]")
-        print(f"Tamanho do recorte: {y_true_crop.shape}")
+     
+        print(f"Cropping to region of interest: rows [{min_row}:{max_row}], cols [{min_col}:{max_col}]")
+        print(f"Crop size: {y_true_crop.shape}")
 
     y_true_final = np.where(mask_crop, y_true_crop, 0)
     y_pred_final = np.where(mask_crop, y_pred_crop, 0)
@@ -312,16 +314,9 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_c
         global_min = np.min(all_valid_values)
         global_max = np.max(all_valid_values)
         global_data_range = global_max - global_min
-        print(f"Range dos dados (data_range) calculado para o SSIM: {global_data_range:.4f} (de {global_min:.4f} a {global_max:.4f})")
-    else:
-     
-        global_data_range = 1.0
-        print("AVISO: Nenhum valor válido para calcular o data_range. Usando valor padrão 1.0.")
-
-    if global_data_range < 1e-10:
-        print("AVISO: Range dos dados é quase zero. O SSIM provavelmente será 1.0 ou NaN.")
-        global_data_range = 1.0 
-
+        
+        print(f"Data range calculated for SSIM: {global_data_range:.4f} (from {global_min:.4f} to {global_max:.4f})")
+    
     try:
         ssim_kwargs = {
             'data_range': global_data_range
@@ -330,19 +325,21 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_c
         ssim_value = ssim(y_true_final, y_pred_final, **ssim_kwargs)
         
         if np.isnan(ssim_value) or np.isinf(ssim_value):
-            print(f"ERRO: SSIM retornou um valor inválido ({ssim_value}).")
-            print(f"--- Fim do cálculo SSIM com ERRO (Contexto: {calculation_context}) ---")
+        
+            print(f"ERROR: SSIM returned an invalid value ({ssim_value}).")
+            print(f"--- End of SSIM calculation with ERROR (Context: {calculation_context}) ---")
             return np.nan
 
-        print(f"Cálculo SSIM bem-sucedido: {ssim_value:.4f}")
-        print(f"--- Fim do cálculo SSIM (Contexto: {calculation_context}) ---")
+        print(f"SSIM calculation successful: {ssim_value:.4f}")
+        print(f"--- End of SSIM calculation (Context: {calculation_context}) ---")
         return ssim_value
         
     except Exception as e:
-        print(f"ERRO: Cálculo do SSIM falhou com uma exceção: {str(e)}")
+        
+        print(f"ERROR: SSIM calculation failed with exception: {str(e)}")
         import traceback
         print(traceback.format_exc())
-        print(f"--- Fim do cálculo SSIM com ERRO (Contexto: {calculation_context}) ---")
+        print(f"--- End of SSIM calculation with ERROR (Context: {calculation_context}) ---")
         return np.nan
 
 def fisher_z_transform(r):
