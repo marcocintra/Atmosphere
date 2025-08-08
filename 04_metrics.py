@@ -287,8 +287,7 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False):
             print(f"SSIM warning: Less than 50% valid values ({valid_percentage:.2f}%)")
             
         ssim_kwargs = {
-            'data_range': global_data_range,
-            'channel_axis': 2 if len(y_true.shape) > 2 and y_true.shape[2] > 1 else None
+            'data_range': global_data_range
         }
         
         ssim_value = ssim(y_true_masked, y_pred_masked, **ssim_kwargs)
