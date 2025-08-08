@@ -1314,9 +1314,10 @@ if __name__ == '__main__':
                 print(f'Average R² (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)} (Fisher Z applied)')
                 print(f'Average R² (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)} (Fisher Z applied)')
             elif metric_type == 'ssim':
-                print(f'Average Structural Similarity Index: {metric_value:.4f} {percent_display}')
-                print(f'Average SSIM (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
-                print(f'Average SSIM (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}')
+                fisher_note = " (Fisher Z applied)" if use_fisher_for_ssim else ""
+                print(f'Average Structural Similarity Index: {metric_value:.4f} {percent_display}{fisher_note}')
+                print(f'Average SSIM (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}{fisher_note}')
+                print(f'Average SSIM (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}{fisher_note}')
             elif metric_type == 'cosine':
                 print(f'Average Cosine Similarity: {metric_value:.4f} {percent_display}')
                 print(f'Average Cosine (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
