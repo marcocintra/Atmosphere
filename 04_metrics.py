@@ -252,7 +252,7 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0, value_mask=None):
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
 def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_context="Overall"):
-    # Changed from Portuguese to English
+    
     print(f"\n--- Start of SSIM calculation (Context: {calculation_context}) ---")
     print(f"y_true shape: {y_true.shape}, dtype: {y_true.dtype}")
     print(f"y_pred shape: {y_pred.shape}, dtype: {y_pred.dtype}")
