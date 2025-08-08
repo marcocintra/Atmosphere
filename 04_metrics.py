@@ -847,8 +847,6 @@ if __name__ == '__main__':
                             print(f"Skipping {file_a.name} - failed to load one or both images")
                         continue
                     
-                    map_a = np.nan_to_num(map_a, nan=np.nan)
-                    map_b = np.nan_to_num(map_b, nan=np.nan)
                     map_a_flat = map_a.flatten()
                     map_b_flat = map_b.flatten()
                     
