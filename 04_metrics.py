@@ -12,8 +12,6 @@ warnings.filterwarnings('ignore')
 
 def calculate_q3_mask(map_data, verbose=False):
     
-    print("estou no CALCULATE_Q3_MASK")
-    
     if verbose:
         print(f"Calculating Q3 mask for data shape {map_data.shape}")
     
