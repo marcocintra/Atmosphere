@@ -355,7 +355,7 @@ def fisher_z_inverse(z):
         return np.nan
     return (np.exp(2 * z) - 1) / (np.exp(2 * z) + 1)
 
-def calculate_pearson_avg_with_fisher(values):
+def calculate_avg_with_fisher(values):
     
     values_array = np.asarray(values, dtype=float)
     
@@ -372,7 +372,7 @@ def calculate_pearson_avg_with_fisher(values):
 
 def pearson_fisher_agg(series):
     
-    return calculate_pearson_avg_with_fisher(series.values)
+    return calculate_avg_with_fisher(series.values)
 
 def calculate_strict_stats(map_a, map_b):
     
@@ -472,8 +472,8 @@ def verify_combined_stats(selection):
             inconsistencies += 1
     return inconsistencies == 0
 
-def calculate_pair_stats(df, metric_type):
-    
+def calculate_pair_stats(df, metric_type, use_fisher_for_ssim=False):
+ 
     pair_stats = defaultdict(list)
     pair_counts = defaultdict(int)
     
@@ -489,21 +489,37 @@ def calculate_pair_stats(df, metric_type):
     pair_metrics = {}
     for pair_key, values in pair_stats.items():
         if metric_type == 'pearson':
-            z_values = [fisher_z_transform(v) for v in values if not np.isnan(fisher_z_transform(v))]
+            
             pair_metrics[pair_key] = {
-                'metric_value': fisher_z_inverse(np.mean(z_values)) if z_values else np.nan,
+                'metric_value': calculate_avg_with_fisher(values),
+                'count': pair_counts[pair_key]
+            }
+        elif metric_type == 'ssim':
+            
+            pair_metrics[pair_key] = {
+                'metric_value': calculate_avg_with_fisher(values) if use_fisher_for_ssim else np.nanmean(values),
                 'count': pair_counts[pair_key]
             }
         elif metric_type == 'r2':
+            
             source_a, source_b = pair_key.split(' x ')
-            r_values = df.loc[(df['source_a'] == source_a) & (df['source_b'] == source_b)]['pearson_r'].values
+            r_values = df.loc[(df['source_a'] == source_a) & 
+                            (df['source_b'] == source_b)]['pearson_r'].values
             valid_r = r_values[~np.isnan(r_values)]
-            z_values = [fisher_z_transform(r) for r in valid_r if not np.isnan(fisher_z_transform(r))]
+            z_values = [fisher_z_transform(r) for r in valid_r 
+                       if not np.isnan(fisher_z_transform(r))]
             pair_metrics[pair_key] = {
                 'metric_value': fisher_z_inverse(np.mean(z_values)) ** 2 if z_values else np.nan,
                 'count': pair_counts[pair_key]
             }
+        elif metric_type == 'residual':
+            
+            pair_metrics[pair_key] = {
+                'metric_value': np.nanmean(np.abs(values)),
+                'count': pair_counts[pair_key]
+            }
         else:
+            
             pair_metrics[pair_key] = {
                 'metric_value': np.nanmean(values),
                 'count': pair_counts[pair_key]
@@ -511,11 +527,11 @@ def calculate_pair_stats(df, metric_type):
     
     return pair_metrics
 
-def calculate_monthly_metrics(month_data, metric_type):
+def calculate_monthly_metrics(month_data, metric_type, use_fisher_for_ssim=False):
     
     if metric_type == 'pearson':
         pearson_values = month_data[metric_type].values
-        return calculate_pearson_avg_with_fisher(pearson_values)
+        return calculate_avg_with_fisher(pearson_values)
     elif metric_type == 'r2':
         r_values = month_data['pearson_r'].values
         valid_r = r_values[~np.isnan(r_values)]
@@ -523,6 +539,12 @@ def calculate_monthly_metrics(month_data, metric_type):
         return fisher_z_inverse(np.mean(z_values)) ** 2 if z_values else np.nan
     elif metric_type == 'residual':
         return np.nanmean(np.abs(month_data[metric_type].values))
+    elif metric_type == 'ssim':
+        ssim_values = month_data[metric_type].values
+        if use_fisher_for_ssim:
+            return calculate_avg_with_fisher(ssim_values)
+        else:
+            return np.nanmean(ssim_values)
     else:
         return np.nanmean(month_data[metric_type].values)
 
@@ -541,12 +563,12 @@ def calculate_temporal_stats(df, metric_type):
     for (source_a, source_b), group in temp_df.groupby(['source_a', 'source_b']):
         for year_month, month_group in group.groupby('year_month'):
             if metric_type == 'pearson':
-                mean_value = calculate_pearson_avg_with_fisher(month_group[metric_type].values)
-                q3_a_mean = calculate_pearson_avg_with_fisher(month_group[f'{metric_type}_q3_a'].values) 
-                q3_b_mean = calculate_pearson_avg_with_fisher(month_group[f'{metric_type}_q3_b'].values)
+                mean_value = calculate_avg_with_fisher(month_group[metric_type].values)
+                q3_a_mean = calculate_avg_with_fisher(month_group[f'{metric_type}_q3_a'].values) 
+                q3_b_mean = calculate_avg_with_fisher(month_group[f'{metric_type}_q3_b'].values)
             elif metric_type == 'r2':
                 r_values = month_group['pearson_r'].values
-                mean_value = calculate_pearson_avg_with_fisher(r_values) ** 2
+                mean_value = calculate_avg_with_fisher(r_values) ** 2
                 q3_a_mean = np.nanmean(month_group[f'{metric_type}_q3_a'].values)
                 q3_b_mean = np.nanmean(month_group[f'{metric_type}_q3_b'].values)
             else:
@@ -603,10 +625,10 @@ def calculate_monthly_q3_by_source(df, metric_type):
     result = []
     for (source, year, month), values in monthly_q3_stats.items():
         if metric_type == 'pearson':
-            mean_value = calculate_pearson_avg_with_fisher(values)
+            mean_value = calculate_avg_with_fisher(values)
         elif metric_type == 'r2':
             r_values = np.sqrt([v for v in values if not np.isnan(v)])
-            mean_value = calculate_pearson_avg_with_fisher(r_values) ** 2 if len(r_values) > 0 else np.nan
+            mean_value = calculate_avg_with_fisher(r_values) ** 2 if len(r_values) > 0 else np.nan
         else:
             mean_value = np.nanmean(values)
             
@@ -661,10 +683,10 @@ def calculate_monthly_general_metrics_by_source(df, metric_type):
     result = []
     for (source, year, month), values in monthly_general_metrics.items():
         if metric_type == 'pearson':
-            mean_value = calculate_pearson_avg_with_fisher(values)
+            mean_value = calculate_avg_with_fisher(values)
         elif metric_type == 'r2':
             r_values = np.sqrt([v for v in values if v >= 0 and not np.isnan(v)])
-            mean_value = calculate_pearson_avg_with_fisher(r_values) ** 2 if len(r_values) > 0 else np.nan
+            mean_value = calculate_avg_with_fisher(r_values) ** 2 if len(r_values) > 0 else np.nan
         else:
             mean_value = np.nanmean(values)
             
@@ -712,6 +734,8 @@ if __name__ == '__main__':
                         help='Enable detailed logging for skipped files')
     parser.add_argument('--debug-file', type=str, default="debug_missing_files.log",
                         help='File to log debug information about missing files')
+    parser.add_argument('--ssim-use-fisher', action='store_true',
+                    help='Use Fisher Z-transformation when averaging SSIM values')
     args = parser.parse_args()
     
     if args.check_existing:
@@ -1124,10 +1148,10 @@ if __name__ == '__main__':
     
     for (source, year, month), values in monthly_q3_by_source.items():
         if metric_type == 'pearson':
-            mean_value = calculate_pearson_avg_with_fisher(values)
+            mean_value = calculate_avg_with_fisher(values)
         elif metric_type == 'r2':
             r_values = np.sqrt([v for v in values if not np.isnan(v)])
-            mean_value = calculate_pearson_avg_with_fisher(r_values) ** 2 if len(r_values) > 0 else np.nan
+            mean_value = calculate_avg_with_fisher(r_values) ** 2 if len(r_values) > 0 else np.nan
         else:
             mean_value = np.nanmean(values)
         
@@ -1157,10 +1181,10 @@ if __name__ == '__main__':
             continue
             
         if metric_type == 'pearson':
-            q3_avg_metrics[source] = calculate_pearson_avg_with_fisher(values)
+            q3_avg_metrics[source] = calculate_avg_with_fisher(values)
         elif metric_type == 'r2':
             r_values = np.sqrt([v for v in values if not np.isnan(v)])
-            q3_avg_metrics[source] = calculate_pearson_avg_with_fisher(r_values) ** 2 if len(r_values) > 0 else np.nan
+            q3_avg_metrics[source] = calculate_avg_with_fisher(r_values) ** 2 if len(r_values) > 0 else np.nan
         else:
             q3_avg_metrics[source] = np.nanmean(values)
     
@@ -1189,11 +1213,11 @@ if __name__ == '__main__':
             
             if len(valid_metrics) > 0:
                 if metric_type == 'pearson':
-                    metric_value = calculate_pearson_avg_with_fisher(valid_metrics)
+                    metric_value = calculate_avg_with_fisher(valid_metrics)
                 elif metric_type == 'r2':
                     r_values = selection['pearson_r'].values
                     valid_r = r_values[~np.isnan(r_values)]
-                    metric_value = calculate_pearson_avg_with_fisher(valid_r) ** 2
+                    metric_value = calculate_avg_with_fisher(valid_r) ** 2
                 else:
                     metric_value = np.nanmean(np.abs(valid_metrics)) if metric_type == 'residual' else np.nanmean(valid_metrics)
             else:
@@ -1205,13 +1229,13 @@ if __name__ == '__main__':
             valid_q3_b = metric_q3_b_values[~np.isnan(metric_q3_b_values)]
             
             if metric_type == 'pearson':
-                metric_q3_a_avg = calculate_pearson_avg_with_fisher(valid_q3_a)
-                metric_q3_b_avg = calculate_pearson_avg_with_fisher(valid_q3_b)
+                metric_q3_a_avg = calculate_avg_with_fisher(valid_q3_a)
+                metric_q3_b_avg = calculate_avg_with_fisher(valid_q3_b)
             elif metric_type == 'r2' and 'pearson_r' in selection:
                 r_q3_a = np.sqrt(valid_q3_a)  
                 r_q3_b = np.sqrt(valid_q3_b)
-                metric_q3_a_avg = calculate_pearson_avg_with_fisher(r_q3_a) ** 2
-                metric_q3_b_avg = calculate_pearson_avg_with_fisher(r_q3_b) ** 2
+                metric_q3_a_avg = calculate_avg_with_fisher(r_q3_a) ** 2
+                metric_q3_b_avg = calculate_avg_with_fisher(r_q3_b) ** 2
             else:
                 metric_q3_a_avg = np.nanmean(valid_q3_a) if len(valid_q3_a) > 0 else np.nan
                 metric_q3_b_avg = np.nanmean(valid_q3_b) if len(valid_q3_b) > 0 else np.nan
@@ -1404,18 +1428,19 @@ if __name__ == '__main__':
                         if not month_data.empty:
                             month_name = pd.Timestamp(year=year, month=month, day=1).strftime('%B/%Y')
                             
-                            month_metric = calculate_monthly_metrics(month_data, metric_type)
+                            onth_metric = calculate_monthly_metrics(month_data, metric_type, 
+                                      use_fisher_for_ssim=args.ssim_use_fisher)
                             
                             if metric_type == 'pearson':
-                                month_q3_a_metric = calculate_pearson_avg_with_fisher(month_data[f'{metric_type}_q3_a'].values)
-                                month_q3_b_metric = calculate_pearson_avg_with_fisher(month_data[f'{metric_type}_q3_b'].values)
+                                month_q3_a_metric = calculate_avg_with_fisher(month_data[f'{metric_type}_q3_a'].values)
+                                month_q3_b_metric = calculate_avg_with_fisher(month_data[f'{metric_type}_q3_b'].values)
                             elif metric_type == 'r2':
                                 q3_a_values = month_data[f'{metric_type}_q3_a'].values
                                 q3_b_values = month_data[f'{metric_type}_q3_b'].values
                                 r_q3_a = np.sqrt(q3_a_values[~np.isnan(q3_a_values)])
                                 r_q3_b = np.sqrt(q3_b_values[~np.isnan(q3_b_values)])
-                                month_q3_a_metric = calculate_pearson_avg_with_fisher(r_q3_a) ** 2 if len(r_q3_a) > 0 else np.nan
-                                month_q3_b_metric = calculate_pearson_avg_with_fisher(r_q3_b) ** 2 if len(r_q3_b) > 0 else np.nan
+                                month_q3_a_metric = calculate_avg_with_fisher(r_q3_a) ** 2 if len(r_q3_a) > 0 else np.nan
+                                month_q3_b_metric = calculate_avg_with_fisher(r_q3_b) ** 2 if len(r_q3_b) > 0 else np.nan
                             else:
                                 month_q3_a_metric = np.nanmean(month_data[f'{metric_type}_q3_a'].values)
                                 month_q3_b_metric = np.nanmean(month_data[f'{metric_type}_q3_b'].values)
@@ -1449,11 +1474,11 @@ if __name__ == '__main__':
         valid_metrics = [v for v in dataset_metrics[dataset] if not np.isnan(v)]
         if valid_metrics:
             if metric_type == 'pearson':
-                dataset_avg_metrics[dataset] = calculate_pearson_avg_with_fisher(valid_metrics)
+                dataset_avg_metrics[dataset] = calculate_avg_with_fisher(valid_metrics)
             elif metric_type == 'r2':
                 r_values = df[(df['source_a'] == dataset) | (df['source_b'] == dataset)]['pearson_r'].values
                 valid_r = r_values[~np.isnan(r_values)]
-                dataset_avg_metrics[dataset] = calculate_pearson_avg_with_fisher(valid_r) ** 2
+                dataset_avg_metrics[dataset] = calculate_avg_with_fisher(valid_r) ** 2
             else:
                 dataset_avg_metrics[dataset] = np.nanmean(valid_metrics)
         else:
@@ -1529,7 +1554,8 @@ if __name__ == '__main__':
         print(f"Note: {fisher_note}")
     
     print("\n===== PAIRS COMPARISON =====")
-    pair_metrics = calculate_pair_stats(df, metric_type)
+    
+    pair_metrics = calculate_pair_stats(df, metric_type, use_fisher_for_ssim=args.ssim_use_fisher)  
 
     for pair_key, data in pair_metrics.items():
         metric_val = data['metric_value']
@@ -1873,15 +1899,15 @@ if __name__ == '__main__':
                                 month_metric = calculate_monthly_metrics(month_data, metric_type)
                                 
                                 if metric_type == 'pearson':
-                                    month_q3_a_metric = calculate_pearson_avg_with_fisher(month_data[f'{metric_type}_q3_a'].values)
-                                    month_q3_b_metric = calculate_pearson_avg_with_fisher(month_data[f'{metric_type}_q3_b'].values)
+                                    month_q3_a_metric = calculate_avg_with_fisher(month_data[f'{metric_type}_q3_a'].values)
+                                    month_q3_b_metric = calculate_avg_with_fisher(month_data[f'{metric_type}_q3_b'].values)
                                 elif metric_type == 'r2':
                                     q3_a_values = month_data[f'{metric_type}_q3_a'].values
                                     q3_b_values = month_data[f'{metric_type}_q3_b'].values
                                     r_q3_a = np.sqrt(q3_a_values[~np.isnan(q3_a_values)])
                                     r_q3_b = np.sqrt(q3_b_values[~np.isnan(q3_b_values)])
-                                    month_q3_a_metric = calculate_pearson_avg_with_fisher(r_q3_a) ** 2 if len(r_q3_a) > 0 else np.nan
-                                    month_q3_b_metric = calculate_pearson_avg_with_fisher(r_q3_b) ** 2 if len(r_q3_b) > 0 else np.nan
+                                    month_q3_a_metric = calculate_avg_with_fisher(r_q3_a) ** 2 if len(r_q3_a) > 0 else np.nan
+                                    month_q3_b_metric = calculate_avg_with_fisher(r_q3_b) ** 2 if len(r_q3_b) > 0 else np.nan
                                 else:
                                     month_q3_a_metric = np.nanmean(month_data[f'{metric_type}_q3_a'].values)
                                     month_q3_b_metric = np.nanmean(month_data[f'{metric_type}_q3_b'].values)
