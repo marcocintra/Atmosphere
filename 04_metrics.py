@@ -1428,7 +1428,7 @@ if __name__ == '__main__':
                         if not month_data.empty:
                             month_name = pd.Timestamp(year=year, month=month, day=1).strftime('%B/%Y')
                             
-                            onth_metric = calculate_monthly_metrics(month_data, metric_type, 
+                            month_metric = calculate_monthly_metrics(month_data, metric_type, 
                                       use_fisher_for_ssim=args.ssim_use_fisher)
                             
                             if metric_type == 'pearson':
