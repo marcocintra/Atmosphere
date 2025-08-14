@@ -1527,7 +1527,7 @@ if __name__ == '__main__':
             q3_count = len(q3_values_by_source[source])
             percent_display = f"({percent:.2f}{percent_suffix})" if not np.isnan(percent) else "(NaN%)"
             fisher_note = " (Fisher Z applied)" if metric_type in ['pearson', 'r2'] else ""
-            print(f"{i}. {source}: {q3_val:.4f} {percent_display}{fisher_note} - based on {q3_count} Q3 values")
+            print(f"{i}. {source}: {q3_val:.4f} {percent_display}{fisher_note} - based on {q3_count} Q3 comparisons")
         
         print("\nComparison of Regular vs. Q3-based Metrics:")
         print("-" * 80)
@@ -1725,7 +1725,7 @@ if __name__ == '__main__':
             
             q3_percent_display = f"({q3_percent:.2f}{q3_percent_suffix})" if not np.isnan(q3_percent) else "(NaN%)"
             q3_count = len(q3_values_by_source[source])
-            print(f"Average {metric_type} (Q3 values only): {q3_val:.4f} {q3_percent_display}{fisher_note} (based on {q3_count} Q3 values)")
+            print(f"Average {metric_type} (Q3 values only): {q3_val:.4f} {q3_percent_display}{fisher_note} (based on {q3_count} Q3 comparisons)")
         else:
             print(f"Average {metric_type} (Q3 values only): No valid Q3 values available")
         
