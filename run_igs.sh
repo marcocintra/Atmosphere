@@ -6,7 +6,7 @@ INTERP_DIR=output/
 DATASETS=(
 'TF1_IGS_TEC_maps_0800'
 'TF1_IGS_TEC_maps_1600'
-'TF1_IGS_TEC_maps_2000_2200_0000_0200_0400'
+'TF1_IGS_TEC_maps_2000_0400'
 )
 
 for dataset in "${DATASETS[@]}"
