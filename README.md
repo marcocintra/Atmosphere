@@ -1,4 +1,4 @@
-# Computer code employed in the article "Comparison of Total Electron Content (TEC) maps over Brazil from different sources" - Atmosphere/MDPI
+# Computer code employed in the article "How Reliable Are TEC Maps over Brazil? A Multi-Source Comparative Study with Ground Truth Validation" - Atmosphere/MDPI
 
 ## 1. IPython notebooks for TEC maps preprocessing
 
