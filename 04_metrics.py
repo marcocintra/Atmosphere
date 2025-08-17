@@ -767,16 +767,16 @@ if __name__ == '__main__':
     
     base_datasets = {
             'embrace': [
-                'EMBRACE_TEC_maps'
+                'Seasonal_EMBRACE_TEC_maps'
             ],
             'igs': [
-                'IGS_TEC_maps'
+                'Seasonal_IGS_TEC_maps'
             ],
             'maggia': [
-                'MAGGIA_TEC_maps'
+                'Seasonal_MAGGIA_TEC_maps'
             ],
             'nagoya': [
-                'Nagoya_TEC_maps'
+                'Seasonal_Nagoya_TEC_maps'
             ]
         }
     datasets = {source: [f"{dataset}_{dataset_suffix}" for dataset in dataset_list] 
