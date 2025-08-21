@@ -281,36 +281,14 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_c
         print(f"--- End of SSIM calculation with WARNING (Context: {calculation_context}) ---")
         return np.nan
 
-    rows, cols = np.where(valid_mask)
-    if len(rows) == 0:
-   
-        print("ERROR: No valid pixels found after applying mask. Returning NaN.")
-        print(f"--- End of SSIM calculation with ERROR (Context: {calculation_context}) ---")
-        return np.nan
-        
-    min_row, max_row = rows.min(), rows.max() + 1
-    min_col, max_col = cols.min(), cols.max() + 1
-    
-    y_true_crop = y_true[min_row:max_row, min_col:max_col]
-    y_pred_crop = y_pred[min_row:max_row, min_col:max_col]
-    mask_crop = valid_mask[min_row:max_row, min_col:max_col]
-    
-    if verbose:
-     
-        print(f"Cropping to region of interest: rows [{min_row}:{max_row}], cols [{min_col}:{max_col}]")
-        print(f"Crop size: {y_true_crop.shape}")
+    y_true_final = np.where(valid_mask, y_true, 0)
+    y_pred_final = np.where(valid_mask, y_pred, 0)
 
-    y_true_final = np.where(mask_crop, y_true_crop, 0)
-    y_pred_final = np.where(mask_crop, y_pred_crop, 0)
-
-    all_valid_values = np.concatenate([
-        y_true_final[mask_crop], 
-        y_pred_final[mask_crop]
-    ])
+    pred_valid_values = y_pred[valid_mask]
     
-    if len(all_valid_values) > 0:
-        global_min = np.min(all_valid_values)
-        global_max = np.max(all_valid_values)
+    if len(pred_valid_values) > 0:
+        global_min = np.min(pred_valid_values)
+        global_max = np.max(pred_valid_values)
         global_data_range = global_max - global_min
         
         print(f"Data range calculated for SSIM: {global_data_range:.4f} (from {global_min:.4f} to {global_max:.4f})")
