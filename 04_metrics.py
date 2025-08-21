@@ -326,6 +326,13 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_c
         
         print(f"--- End of SSIM calculation (Context: {calculation_context}) ---")
         return ssim_value
+    
+    except Exception as e:
+        print(f"ERROR: SSIM calculation failed with exception: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        print(f"--- End of SSIM calculation with ERROR (Context: {calculation_context}) ---")
+        return np.nan
 
 def fisher_z_transform(r):
     
