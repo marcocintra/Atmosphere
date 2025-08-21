@@ -253,24 +253,24 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0, value_mask=None):
 
 def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_context="Overall"):
     
-    print(f"\n--- Start of SSIM calculation with anti-correlation (Context: {calculation_context}) ---")
-    print(f"y_true shape: {y_true.shape}, dtype: {y_true.dtype}")
-    print(f"y_pred shape: {y_pred.shape}, dtype: {y_pred.dtype}")
+    # print(f"\n--- Start of SSIM calculation with anti-correlation (Context: {calculation_context}) ---")
+    # print(f"y_true shape: {y_true.shape}, dtype: {y_true.dtype}")
+    # print(f"y_pred shape: {y_pred.shape}, dtype: {y_pred.dtype}")
 
     if value_mask is not None:
-        print(f"Applying provided mask '{calculation_context}'.")
-        print(f"Total pixels in mask: {np.sum(value_mask)}")
+        # print(f"Applying provided mask '{calculation_context}'.")
+        # print(f"Total pixels in mask: {np.sum(value_mask)}")
         valid_mask = value_mask & ~np.isnan(y_true) & ~np.isnan(y_pred)
     else:
-        print("No specific mask provided. Using all valid pixels (non-NaN).")
+        # print("No specific mask provided. Using all valid pixels (non-NaN).")
         valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
 
     valid_count = np.sum(valid_mask)
     invalid_count = np.sum(~valid_mask)
     valid_percentage = valid_count / valid_mask.size * 100
 
-    print(f"Valid pixels: {valid_count}/{valid_mask.size} ({valid_percentage:.2f}%)")
-    print(f"Invalid pixels to be anti-correlated: {invalid_count}")
+    # print(f"Valid pixels: {valid_count}/{valid_mask.size} ({valid_percentage:.2f}%)")
+    # print(f"Invalid pixels to be anti-correlated: {invalid_count}")
     
     if verbose:
         print(f"NaN count in y_true: {np.sum(np.isnan(y_true))}")
@@ -326,13 +326,6 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_c
         
         print(f"--- End of SSIM calculation (Context: {calculation_context}) ---")
         return ssim_value
-        
-    except Exception as e:
-        print(f"ERROR: SSIM calculation failed with exception: {str(e)}")
-        import traceback
-        print(traceback.format_exc())
-        print(f"--- End of SSIM calculation with ERROR (Context: {calculation_context}) ---")
-        return np.nan
 
 def fisher_z_transform(r):
     
