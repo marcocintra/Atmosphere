@@ -253,65 +253,81 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0, value_mask=None):
 
 def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_context="Overall"):
     
-    print(f"\n--- Start of SSIM calculation (Context: {calculation_context}) ---")
+    print(f"\n--- Start of SSIM calculation with anti-correlation (Context: {calculation_context}) ---")
     print(f"y_true shape: {y_true.shape}, dtype: {y_true.dtype}")
     print(f"y_pred shape: {y_pred.shape}, dtype: {y_pred.dtype}")
 
     if value_mask is not None:
-  
         print(f"Applying provided mask '{calculation_context}'.")
         print(f"Total pixels in mask: {np.sum(value_mask)}")
+        valid_mask = value_mask & ~np.isnan(y_true) & ~np.isnan(y_pred)
     else:
-  
-        print("No specific mask provided. Calculating SSIM for all valid pixels (non-NaN) in the image.")
+        print("No specific mask provided. Using all valid pixels (non-NaN).")
+        valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
 
-    valid_mask = value_mask & ~np.isnan(y_true) & ~np.isnan(y_pred) if value_mask is not None else ~np.isnan(y_true) & ~np.isnan(y_pred)
-    valid_value_count = np.sum(valid_mask)
-    valid_percentage = valid_value_count / valid_mask.size * 100
+    valid_count = np.sum(valid_mask)
+    invalid_count = np.sum(~valid_mask)
+    valid_percentage = valid_count / valid_mask.size * 100
 
-    print(f"Valid pixels for this calculation: {valid_value_count}/{valid_mask.size} ({valid_percentage:.2f}%)")
+    print(f"Valid pixels: {valid_count}/{valid_mask.size} ({valid_percentage:.2f}%)")
+    print(f"Invalid pixels to be anti-correlated: {invalid_count}")
     
     if verbose:
         print(f"NaN count in y_true: {np.sum(np.isnan(y_true))}")
         print(f"NaN count in y_pred: {np.sum(np.isnan(y_pred))}")
     
-    if valid_value_count < 100: 
-   
-        print(f"WARNING: Number of valid pixels ({valid_value_count}) is too low. Returning NaN.")
+    if valid_count < 100:
+        print(f"WARNING: Too few valid pixels ({valid_count}). Returning NaN.")
         print(f"--- End of SSIM calculation with WARNING (Context: {calculation_context}) ---")
         return np.nan
 
-    y_true_final = np.where(valid_mask, y_true, 0)
-    y_pred_final = np.where(valid_mask, y_pred, 0)
-
-    pred_valid_values = y_pred[valid_mask]
+    y_true_final = y_true.copy()
+    y_pred_final = y_pred.copy()
+    
+    invalid_mask = ~valid_mask
+    
+    if np.sum(invalid_mask) > 0:
+        print(f"Applying anti-correlation to {np.sum(invalid_mask)} invalid pixels...")
+        
+        y_true_final[invalid_mask] = -1.0
+        y_pred_final[invalid_mask] = +1.0
+        
+        if verbose:
+            print("Invalid pixels set to: y_true=-1.0, y_pred=+1.0 (maximum anti-correlation)")
+    
+    pred_valid_values = y_pred_final[valid_mask]  
+    pred_invalid_values = y_pred_final[invalid_mask]
     
     if len(pred_valid_values) > 0:
-        pred_min = np.min(pred_valid_values)
-        pred_max = np.max(pred_valid_values)
-        pred_data_range = pred_max - pred_min
         
-        print(f"Data range calculated for SSIM: {pred_data_range:.4f} (from {pred_min:.4f} to {pred_max:.4f})")
+        all_pred_values = np.concatenate([pred_valid_values, pred_invalid_values]) if len(pred_invalid_values) > 0 else pred_valid_values
+        data_min = np.min(all_pred_values)
+        data_max = np.max(all_pred_values)
+        data_range = data_max - data_min
+        
+        print(f"Data range from y_pred only: {data_range:.4f} (from {data_min:.4f} to {data_max:.4f})")
+    else:
+        print("ERROR: No valid pixels found.")
+        return np.nan
     
     try:
         ssim_kwargs = {
-            'data_range': pred_data_range
+            'data_range': data_range
         }
         
         ssim_value = ssim(y_true_final, y_pred_final, **ssim_kwargs)
         
         if np.isnan(ssim_value) or np.isinf(ssim_value):
-        
             print(f"ERROR: SSIM returned an invalid value ({ssim_value}).")
             print(f"--- End of SSIM calculation with ERROR (Context: {calculation_context}) ---")
             return np.nan
 
-        print(f"SSIM calculation successful: {ssim_value:.4f}")
+        print(f"SSIM with anti-correlated invalid pixels: {ssim_value:.4f}")
+        
         print(f"--- End of SSIM calculation (Context: {calculation_context}) ---")
         return ssim_value
         
     except Exception as e:
-        
         print(f"ERROR: SSIM calculation failed with exception: {str(e)}")
         import traceback
         print(traceback.format_exc())
