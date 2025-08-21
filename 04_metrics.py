@@ -287,15 +287,15 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_c
     pred_valid_values = y_pred[valid_mask]
     
     if len(pred_valid_values) > 0:
-        global_min = np.min(pred_valid_values)
-        global_max = np.max(pred_valid_values)
-        global_data_range = global_max - global_min
+        pred_min = np.min(pred_valid_values)
+        pred_max = np.max(pred_valid_values)
+        pred_data_range = pred_max - pred_min
         
-        print(f"Data range calculated for SSIM: {global_data_range:.4f} (from {global_min:.4f} to {global_max:.4f})")
+        print(f"Data range calculated for SSIM: {pred_data_range:.4f} (from {pred_min:.4f} to {pred_max:.4f})")
     
     try:
         ssim_kwargs = {
-            'data_range': global_data_range
+            'data_range': pred_data_range
         }
         
         ssim_value = ssim(y_true_final, y_pred_final, **ssim_kwargs)
