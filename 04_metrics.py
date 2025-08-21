@@ -272,14 +272,14 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_c
     # print(f"Valid pixels: {valid_count}/{valid_mask.size} ({valid_percentage:.2f}%)")
     # print(f"Invalid pixels to be anti-correlated: {invalid_count}")
     
-    if verbose:
-        print(f"NaN count in y_true: {np.sum(np.isnan(y_true))}")
-        print(f"NaN count in y_pred: {np.sum(np.isnan(y_pred))}")
+    # if verbose:
+    #     print(f"NaN count in y_true: {np.sum(np.isnan(y_true))}")
+    #     print(f"NaN count in y_pred: {np.sum(np.isnan(y_pred))}")
     
-    if valid_count < 100:
-        print(f"WARNING: Too few valid pixels ({valid_count}). Returning NaN.")
-        print(f"--- End of SSIM calculation with WARNING (Context: {calculation_context}) ---")
-        return np.nan
+    # if valid_count < 100:
+    #     print(f"WARNING: Too few valid pixels ({valid_count}). Returning NaN.")
+    #     print(f"--- End of SSIM calculation with WARNING (Context: {calculation_context}) ---")
+    #     return np.nan
 
     y_true_final = y_true.copy()
     y_pred_final = y_pred.copy()
@@ -287,13 +287,13 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_c
     invalid_mask = ~valid_mask
     
     if np.sum(invalid_mask) > 0:
-        print(f"Applying anti-correlation to {np.sum(invalid_mask)} invalid pixels...")
+        # print(f"Applying anti-correlation to {np.sum(invalid_mask)} invalid pixels...")
         
         y_true_final[invalid_mask] = -1.0
         y_pred_final[invalid_mask] = +1.0
         
-        if verbose:
-            print("Invalid pixels set to: y_true=-1.0, y_pred=+1.0 (maximum anti-correlation)")
+        # if verbose:
+            # print("Invalid pixels set to: y_true=-1.0, y_pred=+1.0 (maximum anti-correlation)")
     
     pred_valid_values = y_pred_final[valid_mask]  
     pred_invalid_values = y_pred_final[invalid_mask]
@@ -305,7 +305,7 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_c
         data_max = np.max(all_pred_values)
         data_range = data_max - data_min
         
-        print(f"Data range from y_pred only: {data_range:.4f} (from {data_min:.4f} to {data_max:.4f})")
+        # print(f"Data range from y_pred only: {data_range:.4f} (from {data_min:.4f} to {data_max:.4f})")
     else:
         print("ERROR: No valid pixels found.")
         return np.nan
@@ -322,11 +322,11 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_c
             print(f"--- End of SSIM calculation with ERROR (Context: {calculation_context}) ---")
             return np.nan
 
-        print(f"SSIM with anti-correlated invalid pixels: {ssim_value:.4f}")
+        # print(f"SSIM with anti-correlated invalid pixels: {ssim_value:.4f}")
         
-        print(f"--- End of SSIM calculation (Context: {calculation_context}) ---")
+        # print(f"--- End of SSIM calculation (Context: {calculation_context}) ---")
         return ssim_value
-    
+ 
     except Exception as e:
         print(f"ERROR: SSIM calculation failed with exception: {str(e)}")
         import traceback
