@@ -323,7 +323,7 @@ def apply_knn_imputation(image, n_neighbors=5, verbose=False):
     n_valid_rows = np.sum(~np.isnan(image).all(axis=1)) 
     effective_neighbors = min(n_neighbors, max(1, n_valid_rows - 1))
     
-    imputer = KNNImputer(n_neighbors=effective_neighbors)
+    imputer = KNNImputer(n_neighbors=effective_neighbors, weights='distance')
     
     if verbose:
         nan_count = np.sum(np.isnan(image))
