@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 from collections import defaultdict
 from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.impute import KNNImputer
 from skimage.metrics import structural_similarity as ssim
 from skimage.io import imread
 import warnings
@@ -251,64 +252,49 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0, value_mask=None):
     linear = abs_errors - quadratic
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
-def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_context="Overall"):
+def calculate_ssim(y_true, y_pred, value_mask=None, n_neighbors=5, verbose=False, calculation_context="Overall"):
     
-    # print(f"\n--- Start of SSIM calculation with anti-correlation (Context: {calculation_context}) ---")
-    # print(f"y_true shape: {y_true.shape}, dtype: {y_true.dtype}")
-    # print(f"y_pred shape: {y_pred.shape}, dtype: {y_pred.dtype}")
-
     if value_mask is not None:
-        # print(f"Applying provided mask '{calculation_context}'.")
-        # print(f"Total pixels in mask: {np.sum(value_mask)}")
         valid_mask = value_mask & ~np.isnan(y_true) & ~np.isnan(y_pred)
     else:
-        # print("No specific mask provided. Using all valid pixels (non-NaN).")
         valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
 
     valid_count = np.sum(valid_mask)
     invalid_count = np.sum(~valid_mask)
     valid_percentage = valid_count / valid_mask.size * 100
 
-    # print(f"Valid pixels: {valid_count}/{valid_mask.size} ({valid_percentage:.2f}%)")
-    # print(f"Invalid pixels to be anti-correlated: {invalid_count}")
+    has_nan_true = np.sum(np.isnan(y_true)) > 0
+    has_nan_pred = np.sum(np.isnan(y_pred)) > 0
     
-    # if verbose:
-    #     print(f"NaN count in y_true: {np.sum(np.isnan(y_true))}")
-    #     print(f"NaN count in y_pred: {np.sum(np.isnan(y_pred))}")
-    
-    # if valid_count < 100:
-    #     print(f"WARNING: Too few valid pixels ({valid_count}). Returning NaN.")
-    #     print(f"--- End of SSIM calculation with WARNING (Context: {calculation_context}) ---")
-    #     return np.nan
-
-    y_true_final = y_true.copy()
-    y_pred_final = y_pred.copy()
-    
-    invalid_mask = ~valid_mask
-    
-    if np.sum(invalid_mask) > 0:
-        # print(f"Applying anti-correlation to {np.sum(invalid_mask)} invalid pixels...")
+    if not has_nan_true and not has_nan_pred and value_mask is None:
         
-        y_true_final[invalid_mask] = -1.0
-        y_pred_final[invalid_mask] = +1.0
+        y_true_final = y_true.copy()
+        y_pred_final = y_pred.copy()
         
-        # if verbose:
-            # print("Invalid pixels set to: y_true=-1.0, y_pred=+1.0 (maximum anti-correlation)")
-    
-    pred_valid_values = y_pred_final[valid_mask]  
-    pred_invalid_values = y_pred_final[invalid_mask]
-    
-    if len(pred_valid_values) > 0:
+        data_range = np.max(y_pred_final) - np.min(y_pred_final)
         
-        all_pred_values = np.concatenate([pred_valid_values, pred_invalid_values]) if len(pred_invalid_values) > 0 else pred_valid_values
-        data_min = np.min(all_pred_values)
-        data_max = np.max(all_pred_values)
-        data_range = data_max - data_min
-        
-        # print(f"Data range from y_pred only: {data_range:.4f} (from {data_min:.4f} to {data_max:.4f})")
     else:
-        print("ERROR: No valid pixels found.")
-        return np.nan
+        
+        y_true_final = apply_knn_imputation(y_true, n_neighbors, verbose)
+        y_pred_final = apply_knn_imputation(y_pred, n_neighbors, verbose)
+        
+        if value_mask is not None:
+            y_true_final = np.where(value_mask, y_true_final, 0)
+            y_pred_final = np.where(value_mask, y_pred_final, 0)
+            
+            pred_valid_values = y_pred_final[value_mask]
+            if len(pred_valid_values) > 0:
+                data_range = np.max(pred_valid_values) - np.min(pred_valid_values)
+            else:
+                print("ERROR: No valid pixels found after applying mask.")
+                return np.nan
+        else:
+            
+            data_range = np.max(y_pred_final) - np.min(y_pred_final)
+    
+    if data_range == 0:
+        print("WARNING: Data range is zero. All pixels have the same value.")
+        return 1.0  
     
     try:
         ssim_kwargs = {
@@ -319,20 +305,45 @@ def calculate_ssim(y_true, y_pred, value_mask=None, verbose=False, calculation_c
         
         if np.isnan(ssim_value) or np.isinf(ssim_value):
             print(f"ERROR: SSIM returned an invalid value ({ssim_value}).")
-            print(f"--- End of SSIM calculation with ERROR (Context: {calculation_context}) ---")
             return np.nan
 
-        # print(f"SSIM with anti-correlated invalid pixels: {ssim_value:.4f}")
-        
-        # print(f"--- End of SSIM calculation (Context: {calculation_context}) ---")
         return ssim_value
- 
+        
     except Exception as e:
         print(f"ERROR: SSIM calculation failed with exception: {str(e)}")
         import traceback
         print(traceback.format_exc())
-        print(f"--- End of SSIM calculation with ERROR (Context: {calculation_context}) ---")
         return np.nan
+
+def apply_knn_imputation(image, n_neighbors=5, verbose=False):
+    
+    if not np.any(np.isnan(image)):
+        return image.copy()
+    
+    n_valid_rows = np.sum(~np.isnan(image).all(axis=1)) 
+    effective_neighbors = min(n_neighbors, max(1, n_valid_rows - 1))
+    
+    imputer = KNNImputer(n_neighbors=effective_neighbors)
+    
+    if verbose:
+        nan_count = np.sum(np.isnan(image))
+        total_pixels = image.size
+        print(f"KNN Imputation: {nan_count}/{total_pixels} pixels to impute using {effective_neighbors} neighbors")
+    
+    try:
+        
+        imputed_image = imputer.fit_transform(image)
+        
+        return imputed_image
+        
+    except Exception as e:
+        if verbose:
+            print(f"KNN Imputation failed: {e}")
+            print("Falling back to mean imputation...")
+        
+        mean_value = np.nanmean(image)
+        imputed_image = np.where(np.isnan(image), mean_value, image)
+        return imputed_image
 
 def fisher_z_transform(r):
     
