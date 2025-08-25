@@ -910,8 +910,8 @@ if __name__ == '__main__':
                         map_a_imputed = map_a.copy()
                         map_b_imputed = map_b.copy()
 
-                    mask_a_q3, q3_a = calculate_q3_mask_after_imputation(map_a_imputed, verbose=file_verbose)
-                    mask_b_q3, q3_b = calculate_q3_mask_after_imputation(map_b_imputed, verbose=file_verbose)
+                    mask_a_q3, q3_a = calculate_q3(map_a_imputed, verbose=file_verbose)
+                    mask_b_q3, q3_b = calculate_q3(map_b_imputed, verbose=file_verbose)
                     
                     min_values = 100
                     valid_q3_a = mask_a_q3 is not None and mask_a_q3.sum() >= min_values
@@ -1305,11 +1305,6 @@ if __name__ == '__main__':
                 print(f'Average R² Score: {metric_value:.4f} {percent_display} (Fisher Z applied on Pearson r)')
                 print(f'Average R² (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)} (Fisher Z applied)')
                 print(f'Average R² (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)} (Fisher Z applied)')
-            elif metric_type == 'ssim':
-                fisher_note = " (Fisher Z applied)" if use_fisher_for_ssim else ""
-                print(f'Average Structural Similarity Index: {metric_value:.4f} {percent_display}{fisher_note}')
-                print(f'Average SSIM (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}{fisher_note}')
-                print(f'Average SSIM (Q3 {source_b}): {format_metric_with_percent(metric_q3_b_avg, is_normalized=True)}{fisher_note}')
             elif metric_type == 'cosine':
                 print(f'Average Cosine Similarity: {metric_value:.4f} {percent_display}')
                 print(f'Average Cosine (Q3 {source_a}): {format_metric_with_percent(metric_q3_a_avg, is_normalized=True)}')
