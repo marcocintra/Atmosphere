@@ -420,6 +420,8 @@ def load_image(filepath, verbose=False):
     elif filepath.suffix.lower() == '.npy':
         try:
             img = np.load(filepath)
+            if 'IGS' in filepath.upper():
+                img = np.flip(img, axis=0)
             if verbose:
                 print(f"Loaded numpy array {filepath.name}: shape={img.shape}, dtype={img.dtype}")
                 if np.isnan(img).any():
