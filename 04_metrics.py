@@ -89,7 +89,7 @@ def calculate_r2_score(y_true, y_pred, filename="unknown", value_mask=None):
             return np.nan, np.nan
         y_true = y_true[value_mask]
         y_pred = y_pred[value_mask]
-    pearson_r = calculate_pearson(y_true, y_pred, filename)
+    pearson_r = calculate_pearson(y_true, y_pred, file_a.name, value_mask=mask_a_q3.flatten())
     if np.isnan(pearson_r):
         return np.nan, np.nan
     return pearson_r ** 2, pearson_r
@@ -252,12 +252,9 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0, value_mask=None):
     linear = abs_errors - quadratic
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
-def calculate_ssim(y_true, y_pred, value_mask=None, n_neighbors=5, verbose=False, calculation_context="Overall"):
+def calculate_ssim(y_true, y_pred):
     
-    if value_mask is not None:
-        valid_mask = value_mask & ~np.isnan(y_true) & ~np.isnan(y_pred)
-    else:
-        valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
 
     valid_count = np.sum(valid_mask)
     invalid_count = np.sum(~valid_mask)
@@ -273,25 +270,6 @@ def calculate_ssim(y_true, y_pred, value_mask=None, n_neighbors=5, verbose=False
         
         data_range = np.max(y_pred_final) - np.min(y_pred_final)
         
-    else:
-        
-        y_true_final = apply_knn_imputation(y_true, n_neighbors, verbose)
-        y_pred_final = apply_knn_imputation(y_pred, n_neighbors, verbose)
-        
-        if value_mask is not None:
-            y_true_final = np.where(value_mask, y_true_final, 0)
-            y_pred_final = np.where(value_mask, y_pred_final, 0)
-            
-            pred_valid_values = y_pred_final[value_mask]
-            if len(pred_valid_values) > 0:
-                data_range = np.max(pred_valid_values) - np.min(pred_valid_values)
-            else:
-                print("ERROR: No valid pixels found after applying mask.")
-                return np.nan
-        else:
-            
-            data_range = np.max(y_pred_final) - np.min(y_pred_final)
-    
     if data_range == 0:
         print("WARNING: Data range is zero. All pixels have the same value.")
         return 1.0  
@@ -865,230 +843,247 @@ if __name__ == '__main__':
             continue
         
         for dataset_a, dataset_b in valid_pairs:
-            dir_a = base_dir / dataset_a
-            dir_b = base_dir / dataset_b
+    dir_a = base_dir / dataset_a
+    dir_b = base_dir / dataset_b
+    
+    files_a = sorted(list(dir_a.glob(file_extension)))
+    if not files_a:
+        continue
+    
+    print(f"\nProcessing {dataset_a} x {dataset_b}")
+    print(f"Found {len(files_a)} {file_extension} files in {dataset_a}")
+    
+    debug_count = 0
+    pair_processed = 0
+    pair_skipped = 0
+    
+    for file_a in files_a:
+        file_b = dir_b / file_a.name
+        if not file_b.exists():
+            skipped_files += 1
+            pair_skipped += 1
+            total_missing += 1
+            if debug_skipped:
+                debug_log.write(f"MISSING: {file_b} (matching {file_a})\n")
+            if verbose:
+                print(f"Skipping {file_a.name} - corresponding file not found in {dataset_b}")
+            continue
+        
+        file_verbose = verbose or (sample_debug > 0 and debug_count < sample_debug)
+        if file_verbose:
+            debug_count += 1
+            print(f"\n{'='*40}")
+            print(f"Processing file pair: {file_a.name}")
+            print(f"  Source A: {dir_a}")
+            print(f"  Source B: {dir_b}")
+        
+        try:
+            map_a = load_image(file_a, verbose=file_verbose)
+            map_b = load_image(file_b, verbose=file_verbose)
             
-            files_a = sorted(list(dir_a.glob(file_extension)))
-            if not files_a:
+            if map_a is None or map_b is None:
+                skipped_files += 1
+                pair_skipped += 1
+                total_errors += 1
+                if debug_skipped:
+                    debug_log.write(f"ERROR: Failed to load {file_a.name} or {file_b.name}\n")
+                if file_verbose:
+                    print(f"Skipping {file_a.name} - failed to load one or both images")
                 continue
             
-            print(f"\nProcessing {dataset_a} x {dataset_b}")
-            print(f"Found {len(files_a)} {file_extension} files in {dataset_a}")
+            processed_files += 1
+            pair_processed += 1
+            stats = calculate_strict_stats(map_a, map_b)
             
-            debug_count = 0
-            pair_processed = 0
-            pair_skipped = 0
+            if file_verbose:
+                print(f"Statistics calculated for map pair:")
+                print(f"  Map A: Min={stats['min_a']:.4f}, Mean={stats['mean_a']:.4f}, Max={stats['max_a']:.4f}")
+                print(f"  Map B: Min={stats['min_b']:.4f}, Mean={stats['mean_b']:.4f}, Max={stats['max_b']:.4f}")
+                print(f"  Combined data range: {stats['data_range']:.4f}")
+
+            # APLICAR KNN IMPUTATION PRIMEIRO (se necessário)
+            n_neighbors = 5  # Definir como parâmetro se necessário
             
-            for file_a in files_a:
-                file_b = dir_b / file_a.name
-                if not file_b.exists():
-                    skipped_files += 1
-                    pair_skipped += 1
-                    total_missing += 1
-                    if debug_skipped:
-                        debug_log.write(f"MISSING: {file_b} (matching {file_a})\n")
-                    if verbose:
-                        print(f"Skipping {file_a.name} - corresponding file not found in {dataset_b}")
-                    continue
-                
-                file_verbose = verbose or (sample_debug > 0 and debug_count < sample_debug)
+            # Verificar se há NaNs e aplicar imputation
+            has_nan_a = np.any(np.isnan(map_a))
+            has_nan_b = np.any(np.isnan(map_b))
+            
+            if has_nan_a or has_nan_b:
                 if file_verbose:
-                    debug_count += 1
-                    print(f"\n{'='*40}")
-                    print(f"Processing file pair: {file_a.name}")
-                    print(f"  Source A: {dir_a}")
-                    print(f"  Source B: {dir_b}")
+                    print("Applying KNN imputation to handle NaN values...")
                 
-                try:
-                    map_a = load_image(file_a, verbose=file_verbose)
-                    map_b = load_image(file_b, verbose=file_verbose)
-                    
-                    if map_a is None or map_b is None:
-                        skipped_files += 1
-                        pair_skipped += 1
-                        total_errors += 1
-                        if debug_skipped:
-                            debug_log.write(f"ERROR: Failed to load {file_a.name} or {file_b.name}\n")
-                        if file_verbose:
-                            print(f"Skipping {file_a.name} - failed to load one or both images")
-                        continue
-                    
-                    map_a_flat = map_a.flatten()
-                    map_b_flat = map_b.flatten()
-                    
-                    processed_files += 1
-                    pair_processed += 1
-                    stats = calculate_strict_stats(map_a, map_b)
-                    
-                    if file_verbose:
-                        print(f"Statistics calculated for map pair:")
-                        print(f"  Map A: Min={stats['min_a']:.4f}, Mean={stats['mean_a']:.4f}, Max={stats['max_a']:.4f}")
-                        print(f"  Map B: Min={stats['min_b']:.4f}, Mean={stats['mean_b']:.4f}, Max={stats['max_b']:.4f}")
-                        print(f"  Combined data range: {stats['data_range']:.4f}")
+                map_a_imputed = apply_knn_imputation(map_a, n_neighbors, file_verbose) if has_nan_a else map_a.copy()
+                map_b_imputed = apply_knn_imputation(map_b, n_neighbors, file_verbose) if has_nan_b else map_b.copy()
+            else:
+                map_a_imputed = map_a.copy()
+                map_b_imputed = map_b.copy()
 
-                    mask_a_q3, q3_a = calculate_q3_mask(map_a, verbose=file_verbose)
-                    mask_b_q3, q3_b = calculate_q3_mask(map_b, verbose=file_verbose)
-                    
-                    min_values = 100
-                    valid_q3_a = mask_a_q3 is not None and mask_a_q3.sum() >= min_values
-                    valid_q3_b = mask_b_q3 is not None and mask_b_q3.sum() >= min_values
-
-                    if file_verbose:
-                        print(f"Q3 mask validation:")
-                        print(f"  Map A: Q3 value={q3_a:.4f}, Valid mask: {'YES' if valid_q3_a else 'NO'}")
-                        print(f"  Map B: Q3 value={q3_b:.4f}, Valid mask: {'YES' if valid_q3_b else 'NO'}")
-                    
-                    if swap_ytrue_ypred and metric_type in ['r2', 'residual', 'max_residual', 'min_residual']:
-                        y_true = map_b_flat
-                        y_pred = map_a_flat
-                        y_true_2d = map_b
-                        y_pred_2d = map_a
-                    else:
-                        y_true = map_a_flat
-                        y_pred = map_b_flat
-                        y_true_2d = map_a
-                        y_pred_2d = map_b
-                    
-                    if metric_type == 'pearson':
-                        metric_value = calculate_pearson(y_true, y_pred, file_a.name)
-                    elif metric_type == 'r2':
-                        metric_value, pearson_r = calculate_r2_score(y_true, y_pred, file_a.name)
-                    elif metric_type == 'rmse':
-                        metric_value = calculate_rmse(y_true, y_pred)
-                    elif metric_type == 'mse':
-                        metric_value = calculate_mse(y_true, y_pred)
-                    elif metric_type == 'mae':
-                        metric_value = calculate_mae(y_true, y_pred)
-                    elif metric_type == 'residual':
-                        metric_value = calculate_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name)
-                    elif metric_type == 'max_residual':
-                        metric_value = calculate_max_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name)
-                    elif metric_type == 'min_residual':
-                        metric_value = calculate_min_residual_error(y_true, y_pred, min_residual_percentile, normalize=normalize_residuals, filename=file_a.name)
-                    elif metric_type == 'cosine':
-                        metric_value = calculate_cosine_similarity(y_true, y_pred)
-                    elif metric_type == 'huber':
-                        metric_value = calculate_huber_loss(y_true, y_pred, huber_delta)
-                    elif metric_type == 'ssim':
-                        metric_value = calculate_ssim(y_true_2d, y_pred_2d, verbose=file_verbose)
-                    
-                    if file_verbose:
-                        print(f"{metric_type.upper()} calculation result: {metric_value:.4f}")
-                    
-                    metric_q3_a = np.nan
-                    metric_q3_b = np.nan
-                    
-                    if valid_q3_a and metric_type == 'ssim':
-                        metric_q3_a = calculate_ssim(y_true_2d, y_pred_2d, mask_a_q3, verbose=file_verbose, 
-                                 calculation_context=f"Q3 Mask ({source_a})")
-                    elif valid_q3_a:
-                        if metric_type == 'pearson':
-                            metric_q3_a = calculate_pearson(y_true, y_pred, file_a.name, value_mask=mask_a_q3.flatten())
-                        elif metric_type == 'r2':
-                            metric_q3_a, _ = calculate_r2_score(y_true, y_pred, file_a.name, value_mask=mask_a_q3.flatten())
-                        elif metric_type == 'rmse':
-                            metric_q3_a = calculate_rmse(y_true, y_pred, value_mask=mask_a_q3.flatten())
-                        elif metric_type == 'mse':
-                            metric_q3_a = calculate_mse(y_true, y_pred, value_mask=mask_a_q3.flatten())
-                        elif metric_type == 'mae':
-                            metric_q3_a = calculate_mae(y_true, y_pred, value_mask=mask_a_q3.flatten())
-                        elif metric_type == 'residual':
-                            metric_q3_a = calculate_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_a_q3.flatten())
-                        elif metric_type == 'max_residual':
-                            metric_q3_a = calculate_max_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_a_q3.flatten())
-                        elif metric_type == 'min_residual':
-                            metric_q3_a = calculate_min_residual_error(y_true, y_pred, min_residual_percentile, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_a_q3.flatten())
-                        elif metric_type == 'cosine':
-                            metric_q3_a = calculate_cosine_similarity(y_true, y_pred, value_mask=mask_a_q3.flatten())
-                        elif metric_type == 'huber':
-                            metric_q3_a = calculate_huber_loss(y_true, y_pred, huber_delta, value_mask=mask_a_q3.flatten())
-                    
-                    if valid_q3_b and metric_type == 'ssim':
-                        metric_q3_b = calculate_ssim(y_true_2d, y_pred_2d, mask_b_q3, verbose=file_verbose, 
-                                 calculation_context=f"Q3 Mask ({source_b})")
-                    elif valid_q3_b:
-                        if metric_type == 'pearson':
-                            metric_q3_b = calculate_pearson(y_true, y_pred, file_a.name, value_mask=mask_b_q3.flatten())
-                        elif metric_type == 'r2':
-                            metric_q3_b, _ = calculate_r2_score(y_true, y_pred, file_a.name, value_mask=mask_b_q3.flatten())
-                        elif metric_type == 'rmse':
-                            metric_q3_b = calculate_rmse(y_true, y_pred, value_mask=mask_b_q3.flatten())
-                        elif metric_type == 'mse':
-                            metric_q3_b = calculate_mse(y_true, y_pred, value_mask=mask_b_q3.flatten())
-                        elif metric_type == 'mae':
-                            metric_q3_b = calculate_mae(y_true, y_pred, value_mask=mask_b_q3.flatten())
-                        elif metric_type == 'residual':
-                            metric_q3_b = calculate_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_b_q3.flatten())
-                        elif metric_type == 'max_residual':
-                            metric_q3_b = calculate_max_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_b_q3.flatten())
-                        elif metric_type == 'min_residual':
-                            metric_q3_b = calculate_min_residual_error(y_true, y_pred, min_residual_percentile, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_b_q3.flatten())
-                        elif metric_type == 'cosine':
-                            metric_q3_b = calculate_cosine_similarity(y_true, y_pred, value_mask=mask_b_q3.flatten())
-                        elif metric_type == 'huber':
-                            metric_q3_b = calculate_huber_loss(y_true, y_pred, huber_delta, value_mask=mask_b_q3.flatten())
-                    
-                    if file_verbose:
-                        print(f"{metric_type.upper()} with Q3 A mask: {metric_q3_a:.4f}")
-                        print(f"{metric_type.upper()} with Q3 B mask: {metric_q3_b:.4f}")
-                    
-                    if verify_stats and not np.isnan(stats['min_both']) and not np.isnan(stats['max_both']):
-                        both_maps = np.concatenate([map_a_flat[~np.isnan(map_a_flat)], map_b_flat[~np.isnan(map_b_flat)]])
-                        trad_min = np.min(both_maps) if len(both_maps) > 0 else np.nan
-                        trad_max = np.max(both_maps) if len(both_maps) > 0 else np.nan
-                        if not np.isnan(trad_min) and not np.isnan(trad_max):
-                            if abs(stats['min_both'] - trad_min) > 1e-10 or abs(stats['max_both'] - trad_max) > 1e-10:
-                                print(f"INCONSISTENCY DETECTED in file {file_a.name}")
-                    
-                    try:
-                        epoch = np.datetime64(file_a.stem.split('_')[0].replace('.', ':'))
-                    except:
-                        epoch = np.datetime64('1970-01-01T00:00:00')
-                    
-                    if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] and not np.isnan(metric_value):
-                        value_p = metric_value * 100
-                    elif metric_type == 'mse' and not np.isnan(metric_value) and stats['data_range'] != 0:
-                        value_p = (metric_value / (stats['data_range'] ** 2) * 100)
-                    elif metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber'] and not np.isnan(metric_value) and stats['data_range'] != 0:
-                        value_p = (metric_value / stats['data_range'] * 100)
-                    else:
-                        value_p = np.nan
-                    
-                    result_data = {
-                        'datetime': epoch,
-                        'comparison': f'{source_a} x {source_b}',
-                        'dataset_a': dataset_a,
-                        'dataset_b': dataset_b,
-                        'source_a': source_a,
-                        'source_b': source_b,
-                        'filename_a': file_a.name,
-                        'filename_b': file_b.name if metric_type == 'ssim' else file_a.name,
-                        metric_type: metric_value,
-                        f'{metric_type}_p': value_p,
-                        f'{metric_type}_q3_a': metric_q3_a,
-                        f'{metric_type}_q3_b': metric_q3_b,
-                        'q3_a': q3_a,
-                        'q3_b': q3_b,
-                        **stats
-                    }
-                    if metric_type == 'r2':
-                        result_data['pearson_r'] = pearson_r
-                    result.append(result_data)
-                    if processed_files % 10 == 0 and not verbose:
-                        print(f"Processed {processed_files} file pairs, Skipped {skipped_files} files...")
-                except Exception as e:
-                    skipped_files += 1
-                    pair_skipped += 1
-                    total_errors += 1
-                    if debug_skipped:
-                        debug_log.write(f"ERROR processing {file_a.name}: {str(e)}\n")
-                    if file_verbose:
-                        print(f"ERROR processing {file_a.name}: {str(e)}")
+            # CALCULAR MÁSCARAS Q3 APÓS IMPUTATION
+            mask_a_q3, q3_a = calculate_q3_mask_after_imputation(map_a_imputed, verbose=file_verbose)
+            mask_b_q3, q3_b = calculate_q3_mask_after_imputation(map_b_imputed, verbose=file_verbose)
             
-            print(f"\nFor pair {dataset_a} x {dataset_b}: Processed {pair_processed}, Skipped {pair_skipped}")
+            min_values = 100
+            valid_q3_a = mask_a_q3 is not None and mask_a_q3.sum() >= min_values
+            valid_q3_b = mask_b_q3 is not None and mask_b_q3.sum() >= min_values
+
+            if file_verbose:
+                print(f"Q3 mask validation:")
+                print(f"  Map A: Q3 value={q3_a:.4f}, Valid mask: {'YES' if valid_q3_a else 'NO'}")
+                print(f"  Map B: Q3 value={q3_b:.4f}, Valid mask: {'YES' if valid_q3_b else 'NO'}")
+            
+            # Preparar dados para cálculos (usando dados imputados)
+            map_a_flat = map_a_imputed.flatten()
+            map_b_flat = map_b_imputed.flatten()
+            
+            if swap_ytrue_ypred and metric_type in ['r2', 'residual', 'max_residual', 'min_residual']:
+                y_true = map_b_flat
+                y_pred = map_a_flat
+                y_true_2d = map_b_imputed
+                y_pred_2d = map_a_imputed
+            else:
+                y_true = map_a_flat
+                y_pred = map_b_flat
+                y_true_2d = map_a_imputed
+                y_pred_2d = map_b_imputed
+            
+            # CÁLCULO DAS MÉTRICAS (usando função atualizada para Pearson)
+            if metric_type == 'pearson':
+                metric_value = calculate_pearson(y_true, y_pred, file_a.name)
+            elif metric_type == 'r2':
+                metric_value, pearson_r = calculate_r2_score(y_true, y_pred, file_a.name)
+            elif metric_type == 'rmse':
+                metric_value = calculate_rmse(y_true, y_pred)
+            elif metric_type == 'mse':
+                metric_value = calculate_mse(y_true, y_pred)
+            elif metric_type == 'mae':
+                metric_value = calculate_mae(y_true, y_pred)
+            elif metric_type == 'residual':
+                metric_value = calculate_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name)
+            elif metric_type == 'max_residual':
+                metric_value = calculate_max_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name)
+            elif metric_type == 'min_residual':
+                metric_value = calculate_min_residual_error(y_true, y_pred, min_residual_percentile, normalize=normalize_residuals, filename=file_a.name)
+            elif metric_type == 'cosine':
+                metric_value = calculate_cosine_similarity(y_true, y_pred)
+            elif metric_type == 'huber':
+                metric_value = calculate_huber_loss(y_true, y_pred, huber_delta)
+            elif metric_type == 'ssim':
+                # SSIM já usa dados imputados internamente, mas agora podemos passar dados já imputados
+                metric_value = calculate_ssim(y_true_2d, y_pred_2d)
+            
+            if file_verbose:
+                print(f"{metric_type.upper()} calculation result: {metric_value:.4f}")
+            
+            # CÁLCULOS Q3 (usando função atualizada para Pearson)
+            metric_q3_a = np.nan
+            metric_q3_b = np.nan
+            
+            if valid_q3_a:
+                if metric_type == 'pearson':
+                    metric_q3_a = calculate_pearson(y_true, y_pred, file_a.name, value_mask=mask_a_q3.flatten())
+                elif metric_type == 'r2':
+                    metric_q3_a, _ = calculate_r2_score(y_true, y_pred, file_a.name, value_mask=mask_a_q3.flatten())
+                elif metric_type == 'rmse':
+                    metric_q3_a = calculate_rmse(y_true, y_pred, value_mask=mask_a_q3.flatten())
+                elif metric_type == 'mse':
+                    metric_q3_a = calculate_mse(y_true, y_pred, value_mask=mask_a_q3.flatten())
+                elif metric_type == 'mae':
+                    metric_q3_a = calculate_mae(y_true, y_pred, value_mask=mask_a_q3.flatten())
+                elif metric_type == 'residual':
+                    metric_q3_a = calculate_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_a_q3.flatten())
+                elif metric_type == 'max_residual':
+                    metric_q3_a = calculate_max_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_a_q3.flatten())
+                elif metric_type == 'min_residual':
+                    metric_q3_a = calculate_min_residual_error(y_true, y_pred, min_residual_percentile, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_a_q3.flatten())
+                elif metric_type == 'cosine':
+                    metric_q3_a = calculate_cosine_similarity(y_true, y_pred, value_mask=mask_a_q3.flatten())
+                elif metric_type == 'huber':
+                    metric_q3_a = calculate_huber_loss(y_true, y_pred, huber_delta, value_mask=mask_a_q3.flatten())
+            
+            if valid_q3_b:
+                if metric_type == 'pearson':
+                    metric_q3_b = calculate_pearson(y_true, y_pred, file_a.name, value_mask=mask_b_q3.flatten())
+                elif metric_type == 'r2':
+                    metric_q3_b, _ = calculate_r2_score(y_true, y_pred, file_a.name, value_mask=mask_b_q3.flatten())
+                elif metric_type == 'rmse':
+                    metric_q3_b = calculate_rmse(y_true, y_pred, value_mask=mask_b_q3.flatten())
+                elif metric_type == 'mse':
+                    metric_q3_b = calculate_mse(y_true, y_pred, value_mask=mask_b_q3.flatten())
+                elif metric_type == 'mae':
+                    metric_q3_b = calculate_mae(y_true, y_pred, value_mask=mask_b_q3.flatten())
+                elif metric_type == 'residual':
+                    metric_q3_b = calculate_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_b_q3.flatten())
+                elif metric_type == 'max_residual':
+                    metric_q3_b = calculate_max_residual_error(y_true, y_pred, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_b_q3.flatten())
+                elif metric_type == 'min_residual':
+                    metric_q3_b = calculate_min_residual_error(y_true, y_pred, min_residual_percentile, normalize=normalize_residuals, filename=file_a.name, value_mask=mask_b_q3.flatten())
+                elif metric_type == 'cosine':
+                    metric_q3_b = calculate_cosine_similarity(y_true, y_pred, value_mask=mask_b_q3.flatten())
+                elif metric_type == 'huber':
+                    metric_q3_b = calculate_huber_loss(y_true, y_pred, huber_delta, value_mask=mask_b_q3.flatten())
+            
+            if file_verbose:
+                print(f"{metric_type.upper()} with Q3 A mask: {metric_q3_a:.4f}")
+                print(f"{metric_type.upper()} with Q3 B mask: {metric_q3_b:.4f}")
+            
+            # Verificação de estatísticas (usando dados imputados para consistência)
+            if verify_stats and not np.isnan(stats['min_both']) and not np.isnan(stats['max_both']):
+                both_maps = np.concatenate([map_a_flat, map_b_flat])  # Dados já imputados, sem NaN
+                trad_min = np.min(both_maps) if len(both_maps) > 0 else np.nan
+                trad_max = np.max(both_maps) if len(both_maps) > 0 else np.nan
+                if not np.isnan(trad_min) and not np.isnan(trad_max):
+                    if abs(stats['min_both'] - trad_min) > 1e-10 or abs(stats['max_both'] - trad_max) > 1e-10:
+                        print(f"INCONSISTENCY DETECTED in file {file_a.name}")
+            
+            try:
+                epoch = np.datetime64(file_a.stem.split('_')[0].replace('.', ':'))
+            except:
+                epoch = np.datetime64('1970-01-01T00:00:00')
+            
+            if metric_type in ['pearson', 'r2', 'cosine', 'ssim'] and not np.isnan(metric_value):
+                value_p = metric_value * 100
+            elif metric_type == 'mse' and not np.isnan(metric_value) and stats['data_range'] != 0:
+                value_p = (metric_value / (stats['data_range'] ** 2) * 100)
+            elif metric_type in ['rmse', 'mae', 'residual', 'max_residual', 'min_residual', 'huber'] and not np.isnan(metric_value) and stats['data_range'] != 0:
+                value_p = (metric_value / stats['data_range'] * 100)
+            else:
+                value_p = np.nan
+            
+            result_data = {
+                'datetime': epoch,
+                'comparison': f'{source_a} x {source_b}',
+                'dataset_a': dataset_a,
+                'dataset_b': dataset_b,
+                'source_a': source_a,
+                'source_b': source_b,
+                'filename_a': file_a.name,
+                'filename_b': file_b.name if metric_type == 'ssim' else file_a.name,
+                metric_type: metric_value,
+                f'{metric_type}_p': value_p,
+                f'{metric_type}_q3_a': metric_q3_a,
+                f'{metric_type}_q3_b': metric_q3_b,
+                'q3_a': q3_a,
+                'q3_b': q3_b,
+                **stats
+            }
+            if metric_type == 'r2':
+                result_data['pearson_r'] = pearson_r
+            result.append(result_data)
+            if processed_files % 10 == 0 and not verbose:
+                print(f"Processed {processed_files} file pairs, Skipped {skipped_files} files...")
+        except Exception as e:
+            skipped_files += 1
+            pair_skipped += 1
+            total_errors += 1
             if debug_skipped:
-                debug_log.write(f"\nSummary for pair {dataset_a} x {dataset_b}:\n")
-                debug_log.write(f"  Processed: {pair_processed}, Skipped: {pair_skipped}\n\n")
+                debug_log.write(f"ERROR processing {file_a.name}: {str(e)}\n")
+            if file_verbose:
+                print(f"ERROR processing {file_a.name}: {str(e)}")
+    
+    print(f"\nFor pair {dataset_a} x {dataset_b}: Processed {pair_processed}, Skipped {pair_skipped}")
+    if debug_skipped:
+        debug_log.write(f"\nSummary for pair {dataset_a} x {dataset_b}:\n")
+        debug_log.write(f"  Processed: {pair_processed}, Skipped: {pair_skipped}\n\n")
     
     if debug_skipped and debug_log:
         debug_log.write(f"\n\nFINAL SUMMARY:\n")
