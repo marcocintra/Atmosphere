@@ -89,7 +89,7 @@ def calculate_r2_score(y_true, y_pred, filename="unknown", value_mask=None):
             return np.nan, np.nan
         y_true = y_true[value_mask]
         y_pred = y_pred[value_mask]
-    pearson_r = calculate_pearson(y_true, y_pred, value_mask=mask_a_q3.flatten())
+    pearson_r = calculate_pearson(y_true, y_pred)
     if np.isnan(pearson_r):
         return np.nan, np.nan
     return pearson_r ** 2, pearson_r
@@ -252,23 +252,17 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0, value_mask=None):
     linear = abs_errors - quadratic
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
+import numpy as np
+from skimage.metrics import structural_similarity as ssim
+
 def calculate_ssim(y_true, y_pred):
-    
-    valid_mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+   
+    if np.any(np.isnan(y_true)) or np.any(np.isnan(y_pred)) or \
+       np.any(np.isinf(y_true)) or np.any(np.isinf(y_pred)):
+        print("ERROR: Input arrays contain NaN or infinite values.")
+        return np.nan
 
-    valid_count = np.sum(valid_mask)
-    invalid_count = np.sum(~valid_mask)
-    valid_percentage = valid_count / valid_mask.size * 100
-
-    has_nan_true = np.sum(np.isnan(y_true)) > 0
-    has_nan_pred = np.sum(np.isnan(y_pred)) > 0
-    
-    if not has_nan_true and not has_nan_pred and value_mask is None:
-        
-        y_true_final = y_true.copy()
-        y_pred_final = y_pred.copy()
-        
-        data_range = np.max(y_pred_final) - np.min(y_pred_final)
+    data_range = np.max(y_pred) - np.min(y_pred)
         
     if data_range == 0:
         print("WARNING: Data range is zero. All pixels have the same value.")
@@ -279,7 +273,7 @@ def calculate_ssim(y_true, y_pred):
             'data_range': data_range
         }
         
-        ssim_value = ssim(y_true_final, y_pred_final, **ssim_kwargs)
+        ssim_value = ssim(y_true, y_pred, **ssim_kwargs)
         
         if np.isnan(ssim_value) or np.isinf(ssim_value):
             print(f"ERROR: SSIM returned an invalid value ({ssim_value}).")
