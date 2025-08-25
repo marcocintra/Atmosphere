@@ -912,8 +912,8 @@ if __name__ == '__main__':
                         map_a_imputed = map_a.copy()
                         map_b_imputed = map_b.copy()
 
-                    mask_a_q3, q3_a = calculate_q3(map_a_imputed, verbose=file_verbose)
-                    mask_b_q3, q3_b = calculate_q3(map_b_imputed, verbose=file_verbose)
+                    mask_a_q3, q3_a = calculate_q3_mask(map_a_imputed, verbose=file_verbose)
+                    mask_b_q3, q3_b = calculate_q3_mask(map_b_imputed, verbose=file_verbose)
                     
                     min_values = 100
                     valid_q3_a = mask_a_q3 is not None and mask_a_q3.sum() >= min_values
