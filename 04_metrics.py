@@ -947,7 +947,7 @@ if __name__ == '__main__':
                 y_pred_2d = map_b_imputed
             
             if metric_type == 'pearson':
-                metric_value = calculate_pearson(y_true, y_pred, file_a.name)
+                metric_value = calculate_pearson(y_true, y_pred)
             elif metric_type == 'r2':
                 metric_value, pearson_r = calculate_r2_score(y_true, y_pred, file_a.name)
             elif metric_type == 'rmse':
