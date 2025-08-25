@@ -48,7 +48,7 @@ def calculate_q3_mask(map_data, verbose=False):
     
     return mask, q3
 
-def calculate_pearson(y_true, y_pred, filename="unknown", value_mask=None):
+def calculate_pearson(y_true, y_pred, value_mask=None):
     
     if value_mask is not None:
         if value_mask.sum() < 2:
@@ -89,7 +89,7 @@ def calculate_r2_score(y_true, y_pred, filename="unknown", value_mask=None):
             return np.nan, np.nan
         y_true = y_true[value_mask]
         y_pred = y_pred[value_mask]
-    pearson_r = calculate_pearson(y_true, y_pred, file_a.name, value_mask=mask_a_q3.flatten())
+    pearson_r = calculate_pearson(y_true, y_pred, value_mask=mask_a_q3.flatten())
     if np.isnan(pearson_r):
         return np.nan, np.nan
     return pearson_r ** 2, pearson_r
@@ -946,7 +946,6 @@ if __name__ == '__main__':
                 y_true_2d = map_a_imputed
                 y_pred_2d = map_b_imputed
             
-            # CÁLCULO DAS MÉTRICAS (usando função atualizada para Pearson)
             if metric_type == 'pearson':
                 metric_value = calculate_pearson(y_true, y_pred, file_a.name)
             elif metric_type == 'r2':
@@ -968,19 +967,17 @@ if __name__ == '__main__':
             elif metric_type == 'huber':
                 metric_value = calculate_huber_loss(y_true, y_pred, huber_delta)
             elif metric_type == 'ssim':
-                # SSIM já usa dados imputados internamente, mas agora podemos passar dados já imputados
                 metric_value = calculate_ssim(y_true_2d, y_pred_2d)
             
             if file_verbose:
                 print(f"{metric_type.upper()} calculation result: {metric_value:.4f}")
             
-            # CÁLCULOS Q3 (usando função atualizada para Pearson)
             metric_q3_a = np.nan
             metric_q3_b = np.nan
             
             if valid_q3_a:
                 if metric_type == 'pearson':
-                    metric_q3_a = calculate_pearson(y_true, y_pred, file_a.name, value_mask=mask_a_q3.flatten())
+                    metric_q3_a = calculate_pearson(y_true, y_pred, value_mask=mask_a_q3.flatten())
                 elif metric_type == 'r2':
                     metric_q3_a, _ = calculate_r2_score(y_true, y_pred, file_a.name, value_mask=mask_a_q3.flatten())
                 elif metric_type == 'rmse':
@@ -1002,7 +999,7 @@ if __name__ == '__main__':
             
             if valid_q3_b:
                 if metric_type == 'pearson':
-                    metric_q3_b = calculate_pearson(y_true, y_pred, file_a.name, value_mask=mask_b_q3.flatten())
+                    metric_q3_b = calculate_pearson(y_true, y_pred, value_mask=mask_b_q3.flatten())
                 elif metric_type == 'r2':
                     metric_q3_b, _ = calculate_r2_score(y_true, y_pred, file_a.name, value_mask=mask_b_q3.flatten())
                 elif metric_type == 'rmse':
