@@ -168,7 +168,7 @@ def plot_tec_map_raster(tec_map, tec_min=0, tec_max=160,
 
     # grid_lon, grid_lat = np.meshgrid(lon, lat)
 
-    fig = Figure(figsize=(4.9, 4.9))
+    fig = Figure(figsize=(0.49, 0.49))
 
     ax = fig.subplots(1, subplot_kw=dict(
         projection=ccrs.PlateCarree()))
