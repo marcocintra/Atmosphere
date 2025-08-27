@@ -252,9 +252,6 @@ def calculate_huber_loss(y_true, y_pred, delta=1.0, value_mask=None):
     linear = abs_errors - quadratic
     return np.mean(0.5 * quadratic * quadratic + delta * linear)
 
-import numpy as np
-from skimage.metrics import structural_similarity as ssim
-
 def calculate_ssim(y_true, y_pred):
    
     if np.any(np.isnan(y_true)) or np.any(np.isnan(y_pred)) or \
