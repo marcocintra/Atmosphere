@@ -259,7 +259,7 @@ def calculate_ssim(y_true, y_pred):
         print("ERROR: Input arrays contain NaN or infinite values.")
         return np.nan
 
-    data_range = np.max(y_pred) - np.min(y_pred)
+    data_range = 1
         
     if data_range == 0:
         print("WARNING: Data range is zero. All pixels have the same value.")
