@@ -7,6 +7,7 @@
 - MAGGIA_TEC_maps_2022_2024.ipynb
 - NAGOYA_TEC_maps_2022_2024.ipynb
 - Generate_datetimes_from_TEC_maps_dataframes.ipynb
+- Seasonal_TEC_maps_2024.ipynb
 
 ## 2. IPython notebook for TEC maps processing (plotting, interpolation and metrics calculation)
 
