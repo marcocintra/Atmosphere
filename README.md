@@ -1,4 +1,4 @@
-# Computer code employed in the article "How Reliable Are TEC Maps over Brazil? A Multi-Source Comparative Study with Ground Truth Validation" - Atmosphere/MDPI
+# Computer code employed in the article "Reliability Assessment of TEC Maps over Brazil: A Multi-Source Comparative Study with Ground Validation" - Atmosphere/MDPI
 
 ## 1. IPython notebooks for TEC maps preprocessing
 
