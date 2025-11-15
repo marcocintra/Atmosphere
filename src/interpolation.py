@@ -3,8 +3,7 @@ import numpy as np
 from numba import njit
 from typing import Iterable
 
-
-class Interpolation:
+class IDWInterpolation:
 
     def __init__(self, extent: Iterable[float], step: float = 1):
         self.lon_min, self.lon_max, self.lat_min, self.lat_max = extent
@@ -27,9 +26,17 @@ class Interpolation:
                     known_longitudes: Iterable[float],
                     known_latitudes: Iterable[float],
                     known_values: Iterable[float],
-                    **kwargs):
+                    r=990,
+                    reg=1e-10,
+                    p=2):
         self.X_train = np.stack((known_longitudes, known_latitudes), axis=-1)
         self.Y_train = known_values
+
+        distances = IDWInterpolation.cdist(self.X_train, self.X)
+        weights = (np.maximum(r - distances, 0) / (r * distances + reg)) ** p
+        weights /= weights.sum(axis=0) + reg
+
+        self.Y = np.dot(weights.T, self.Y_train)
 
     @property
     def shape(self):
@@ -46,9 +53,8 @@ class Interpolation:
         lon_2 = xb[:, 0]*np.pi/180
         lat_2 = xb[:, 1]*np.pi/180
 
-        return Interpolation._calc_haversine_distance(lon_1, lat_1,
+        return IDWInterpolation._calc_haversine_distance(lon_1, lat_1,
                                                       lon_2, lat_2, r)
-
     @staticmethod
     @njit
     def _calc_haversine_distance(lon_1, lat_1, lon_2, lat_2, r):
@@ -70,46 +76,5 @@ class Interpolation:
         xa = np.c_[xa_lon.ravel(), xa_lat.ravel()]
         xb = np.c_[xb_lon.ravel(), xb_lat.ravel()]
 
-        dists = Interpolation.haversine_distance(xa, xb)
+        dists = IDWInterpolation.haversine_distance(xa, xb)
         return dists.reshape(xb_lon.shape)
-
-    @staticmethod
-    def pdist(x):
-        def nump2(n, k):
-            a = np.ones((k, n - k + 1), dtype=int)
-            a[0] = np.arange(n - k + 1)
-            for j in range(1, k):
-                reps = (n - k + j) - a[j - 1]
-                a = np.repeat(a, reps, axis=1)
-                ind = np.add.accumulate(reps)
-                a[j, ind[:-1]] = 1 - reps[1:]
-                a[j, 0] = j
-                a[j] = np.add.accumulate(a[j])
-            return a
-
-        def get_arrays(x):
-            index = nump2(len(x), 2)
-            a_index = index[0, :]
-            b_index = index[1, :]
-
-            return x[a_index], x[b_index]
-
-        xa, xb = get_arrays(x)
-        return Interpolation.haversine_distance(xa, xb)
-
-
-class InverseDistanceWeightingInterpolation(Interpolation):
-    def interpolate(self,
-                    known_longitudes: Iterable[float],
-                    known_latitudes: Iterable[float],
-                    known_values: Iterable[float],
-                    r=990,
-                    reg=1e-10,
-                    p=2):
-        super().interpolate(known_longitudes, known_latitudes, known_values)
-
-        distances = Interpolation.cdist(self.X_train, self.X)
-        weights = (np.maximum(r - distances, 0) / (r * distances + reg)) ** p
-        weights /= weights.sum(axis=0) + reg
-
-        self.Y = np.dot(weights.T, self.Y_train)
