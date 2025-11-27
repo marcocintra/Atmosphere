@@ -11,9 +11,11 @@ pandas = "*"
 ray = "*"
 ionex = {git = "git+https://github.com/gnss-lab/ionex.git#egg=ionex"}
 scipy = "*"
+scikit-learn = "*"
 numba = "*"
 
 [dev-packages]
 
 [requires]
-python_version = "3.10"
+python_version = "3.12"
+python_full_version = "3.12.3"
