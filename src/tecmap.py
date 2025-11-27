@@ -1,6 +1,9 @@
 import numpy as np
 
+from bisect import bisect_left
 from typing import Iterable, Any
+
+from src.interpolation import IDWInterpolation
 
 
 class TecMap:
@@ -99,6 +102,55 @@ class TecMap:
         except IndexError as ex:
             return np.nan
 
+    def get_tec_value(self, longitudes, latitudes):
+        tec_values = []
+        for longitude, latitude in zip(longitudes, latitudes):
+
+            upper_index_index = bisect_left(self.lon, longitude)
+            lower_index_index = upper_index_index - 1
+            right_lon = self.lon[upper_index_index]
+            left_lon = self.lon[lower_index_index]
+
+            upper_index_index = bisect_left(sorted(self.lat), latitude)
+            lower_index_index = upper_index_index - 1
+            upper_lat = sorted(self.lat)[upper_index_index]
+            lower_lat = sorted(self.lat)[lower_index_index]
+
+            upper_right_value = self._tec_map[
+                self._latitude_to_index(upper_lat),
+                self._longitude_to_index(right_lon)]
+
+            upper_left_value = self._tec_map[
+                self._latitude_to_index(upper_lat),
+                self._longitude_to_index(left_lon)]
+
+            lower_right_value = self._tec_map[
+                self._latitude_to_index(lower_lat),
+                self._longitude_to_index(right_lon)]
+
+            lower_left_value = self._tec_map[
+                self._latitude_to_index(lower_lat),
+                self._longitude_to_index(left_lon)]
+
+            interp = IDWInterpolation(extent=[self.lon_min, self.lon_max, self.lat_min, self.lat_max])
+            interp.X = np.array([[longitude, latitude]])
+
+            known_longitudes = np.array([right_lon,
+                                         left_lon,
+                                         right_lon,
+                                         left_lon])
+            known_latitudes = np.array([upper_lat,
+                                        upper_lat,
+                                        lower_lat,
+                                        lower_lat])
+            known_values = np.array([upper_right_value,
+                                     upper_left_value,
+                                     lower_right_value,
+                                     lower_left_value])
+
+            interp.interpolate(known_longitudes, known_latitudes, known_values, r=550, reg=1e-6)
+            tec_values.append(interp.Y[0])
+        return np.array(tec_values)
 
 class Embrace(TecMap):
 
