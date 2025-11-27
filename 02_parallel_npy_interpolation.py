@@ -9,7 +9,7 @@ from pathlib import Path
 
 from src.constants import MAP_EXTENT, INTERP_STEP
 from src.interpolation import InverseDistanceWeightingInterpolation
-from src.util import create_folder
+from src.utils import create_folder
 from src.tecmap import Embrace, IGS, Maggia, Nagoya, TecMap
 
 
