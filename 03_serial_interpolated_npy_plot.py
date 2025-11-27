@@ -6,7 +6,7 @@ from pathlib import Path
 from src.constants import (TEC_MIN, TEC_MAX, MAP_EXTENT, PLOT_EXTENT,
                            IGRF_EXTENT, INTERP_STEP)
 from src.graphics import plot_tec_map, plot_tec_map_raster
-from src.util import create_folder, read_igrf13_data
+from src.utils import create_folder, read_igrf13_data
 from src.tecmap import Embrace, IGS, Maggia, Nagoya, TecMap
 
 
