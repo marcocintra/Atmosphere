@@ -1,6 +1,6 @@
-Instructions for adding the data:
+Instructions for adding the data from Zenodo repository (https://doi.org/10.5281/zenodo.15453941):
 
-1) Download and extract the following Gopi TEC data from [https://zenodo.org/records/17470109](https://doi.org/10.5281/zenodo.15453941) to "gopi" folder:
+1) Download and extract the following Gopi TEC data to "gopi" folder:
 
 - Gopi_TEC_AMTE_Dec_2024.zip
 - Gopi_TEC_APLJ_Dec_2024.zip
@@ -30,7 +30,7 @@ Instructions for adding the data:
 - Gopi_TEC_TOPL_Dec_2024.zip
 - Gopi_TEC_UFPR_Dec_2024.zip
 
-2) Download and extract the following TEC map data from [https://zenodo.org/records/17470109](https://doi.org/10.5281/zenodo.15453941) to "tecmaps" folder:
+2) Download and extract the following TEC map data to "tecmaps" folder:
 
 - TF_EMBRACE_TEC_maps_intersection_with_datetimes_case_study_from_Sept_05_2024_to_Dec_2024.zip
 - TF_IGS_TEC_maps_intersection_with_datetimes_case_study_Dec_2024.zip
