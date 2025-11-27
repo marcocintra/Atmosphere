@@ -19,7 +19,7 @@ if __name__ == "__main__":
     }
 
     df = pd.DataFrame()
-    for station_dir in [input_dir]:
+    for station_dir in sorted(input_dir.glob('Gopi_TEC_????_???_????')):
         print(station_dir)
         for data_file in sorted(station_dir.glob('*.Std')):
             print(data_file)
