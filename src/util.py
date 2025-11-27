@@ -2,20 +2,27 @@ import numpy as np
 import pandas as pd
 import shutil
 
+from datetime import time
 from pathlib import Path
 
 
+def decimal_hours_to_hms(decimal_hours_value, round_minutes=False):
+    minutes, seconds = divmod(decimal_hours_value * 3600, 60)
+    hours, minutes = divmod(minutes, 60)
+
+    hours = int(hours)
+    minutes = int(minutes)
+    seconds = int(seconds + 0.5)
+
+    if round_minutes:
+        minutes += round(seconds / 60)
+        seconds = 0
+
+    target_time = time(hours, minutes, seconds)
+    return target_time
+
+
 def create_folder(folder: Path = None, clear: bool = False):
-    """ Create a new folder
-
-    Parameters
-    ----------
-    folder: pathlib.Path
-        The folder path.
-    clear: bool
-        Clear content if folder exists.
-    """
-
     if folder:
         if folder.is_dir() and clear:
             shutil.rmtree(folder)
